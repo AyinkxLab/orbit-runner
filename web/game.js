@@ -796,6 +796,7 @@ class Game {
     this.applyCosmetics();
     this.applySettings();
     this.installPrompt = null;
+    this.fullscreenAvailable = typeof document !== "undefined" && !!document.documentElement.requestFullscreen;
     this.stars = Array.from({ length: 170 }, () => [Math.random() * W, Math.random() * H, Math.random(), 0.25 + Math.random() * 0.75]);
     this.ensureMissions();
     this.refreshUnlocks();
@@ -1279,6 +1280,23 @@ class Game {
     this.rivalGhost = ghost;
     this.socialMessage = `Racing ${String(ghost.name || "the leader").slice(0, 20)} (${ghost.score})`;
     await this.beginMode(scope === "daily" ? "daily" : "ranked");
+  }
+  async toggleFullscreen() {
+    if (!this.fullscreenAvailable) {
+      this.settingsMessage = "Fullscreen is not available in this browser.";
+      return;
+    }
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else {
+        await document.documentElement.requestFullscreen();
+        if (screen.orientation && screen.orientation.lock) {
+          screen.orientation.lock("portrait").catch(() => {});
+        }
+      }
+    } catch (e) {
+      this.settingsMessage = "Fullscreen was blocked by the browser.";
+    }
   }
   async installApp() {
     if (!this.installPrompt) return;
@@ -1917,12 +1935,16 @@ class Game {
         on ? "rgba(30,80,40,0.35)" : "rgba(255,255,255,0.04)");
       text(c, desc, W / 2, y + 86, 13, "#828296");
     });
+    if (this.fullscreenAvailable) {
+      this.button(c, document.fullscreenElement ? "EXIT FULLSCREEN" : "FULLSCREEN", 730,
+        "#78c8ff", () => this.toggleFullscreen(), 50);
+    }
     if (this.installPrompt) {
-      this.button(c, "INSTALL ORBIT RUNNER", 760, "#3cdcb4", () => this.installApp(), 60,
+      this.button(c, "INSTALL ORBIT RUNNER", 792, "#3cdcb4", () => this.installApp(), 54,
         "rgba(20,80,70,0.35)");
     }
-    this.button(c, "BACK", 840, "#c8c8dc", () => this.goTitle(), 64);
-    text(c, "1-5 toggle - B / ESC back", W / 2, 930, 17, "#828296");
+    this.button(c, "BACK", 856, "#c8c8dc", () => this.goTitle(), 60);
+    text(c, "1-5 toggle - B / ESC back", W / 2, 940, 17, "#828296");
   }
 
   drawShop(c) {
@@ -2618,10 +2640,13 @@ function boot() {
     canvas.width = W * scale * dpr; canvas.height = H * scale * dpr;
     ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
   }
-  window.addEventListener("resize", resize); resize();
+  window.addEventListener("resize", resize);
+  if (window.visualViewport) window.visualViewport.addEventListener("resize", resize);
+  resize();
   const toLogical = e => { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) / scale, (e.clientY - r.top) / scale]; };
 
   let start = null;
+  canvas.addEventListener("contextmenu", e => e.preventDefault());
   canvas.addEventListener("pointerdown", e => { Sfx.unlock(); start = { p: toLogical(e), t: performance.now() }; e.preventDefault(); });
   canvas.addEventListener("pointerup", e => {
     if (!start) return;

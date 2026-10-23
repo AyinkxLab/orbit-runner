@@ -12,6 +12,7 @@
   "theme_color": "#060610",
   "lang": "en",
   "categories": ["games", "entertainment"],
+  "prefer_related_applications": false,
   "shortcuts": [
     { "name": "Ranked Weekly", "short_name": "Ranked", "url": "./?mode=ranked", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
     { "name": "Daily Challenge", "short_name": "Daily", "url": "./?mode=daily", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },

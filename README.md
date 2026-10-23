@@ -168,6 +168,56 @@ python -m http.server 8000
 
 Open http://localhost:8000.
 
+## Platforms
+
+| Platform | How it runs |
+|---|---|
+| **Windows / macOS / Linux browser** | `web/` — Chrome, Edge, Firefox, Safari |
+| **iPhone / iPad (iOS)** | Safari → Add to Home Screen, or the Capacitor iOS build |
+| **Android phone/tablet** | Chrome → Install app, or the Capacitor Android build |
+| **Windows / macOS / Linux desktop** | `python desktop/orbit_runner.py` or a PyInstaller executable |
+| **Server** | Python 3.10+ on any OS, or Docker |
+
+### Desktop builds
+
+```bash
+pip install -r desktop/requirements-build.txt
+python desktop/build.py
+```
+
+`build.py` produces `dist/OrbitRunner.exe` on Windows, `dist/OrbitRunner.app`
+on macOS, and `dist/OrbitRunner` on Linux. A frozen build stores its save in the
+platform user-data directory (`%APPDATA%`, `Application Support`, or
+`$XDG_DATA_HOME`). The desktop version uses fallback monospace fonts on systems
+without Consolas/Menlo.
+
+### Native iOS / Android
+
+The PWA is installable with no store. For store builds, the `web/` folder is a
+ready Capacitor webDir:
+
+From the repository root:
+
+```bash
+npm install
+npx cap add android
+npx cap add ios          # macOS + Xcode only
+npm run cap:sync
+npm run cap:android
+npm run cap:ios
+```
+
+`capacitor.config.json` sets the app id, app name, `https` Android scheme and
+AdMob initialization. Native builds use the real `AdMobProvider` when
+`admobRewardedId` is configured; browsers fall back to the mock ad.
+
+### PWA
+
+The manifest, service worker, safe-area layout, touch/pointer controls, iOS
+audio unlock, fullscreen button and install shortcuts cover phones, tablets,
+laptops and desktop browsers. Serve over HTTPS (or `localhost`) for PWA install
+and service-worker support.
+
 ## Tests
 
 ```bash
@@ -193,10 +243,13 @@ python -m unittest discover -s server -p "test_*.py" -v
 | Path | Purpose |
 |---|---|
 | `desktop/orbit_runner.py` | Pygame game, ad interface, selftest |
+| `desktop/build.py` | PyInstaller build for the current OS |
 | `desktop/test_orbit_runner.py` | Headless Python regression tests |
 | `desktop/orbit_*.png` | Screenshots produced by `--selftest --shots` |
 | `web/game.js` | Canvas game, ad interface, ranked/leaderboard client |
-| `web/config.js` | Facebook App ID, score-server URL |
+| `web/config.js` | Facebook App ID, score-server URL, AdMob IDs |
+| `capacitor.config.json` | Native iOS/Android wrapper settings |
+| `package.json` | Capacitor dependencies and native scripts |
 | `web/test/game.test.js` | Node test suite |
 | `web/index.html` | Page shell, safe-area layout |
 | `web/sw.js` | Versioned offline cache / update handling |

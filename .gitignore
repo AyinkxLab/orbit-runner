@@ -9,3 +9,10 @@ __pycache__/
 *.pyc
 node_modules/
 .DS_Store
+dist/
+build/
+*.spec
+android/.gradle/
+ios/App/Pods/
+web/android/.gradle/
+web/ios/App/Pods/

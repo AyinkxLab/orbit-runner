@@ -13,6 +13,18 @@ W/S, Space to reverse, `P` pause, `M` mute, `V` ship, `1/2/3` contract,
 `R` ranked, `L` leaderboard, `D` daily. On the leaderboard: `1/2/3` tabs,
 `F` connect Facebook, `R` refresh, `B` back.
 
+## Platform support
+
+- **Phone/tablet:** iOS Safari, Android Chrome, installed PWA, or Capacitor.
+- **Laptop/desktop:** Chrome, Edge, Firefox and Safari on Windows, macOS and Linux.
+- **Input:** touch swipe/tap, mouse drag/click, keyboard, on-screen pause/mute/shop/install.
+- **Display:** safe-area insets for notches, DPR-aware letterboxed canvas,
+  responsive resize, fullscreen button in Settings, portrait PWA orientation.
+- **Offline:** service worker + local save; updates use versioned network-first
+  navigation.
+- **Audio:** Web Audio with `webkitAudioContext` fallback and resume-on-gesture
+  for iOS.
+
 ## 1. Try it on your computer
 
 From the repository root:
@@ -37,7 +49,7 @@ The game has to be online over HTTPS before a phone can install it:
    - **iPhone (Safari):** Share -> *Add to Home Screen*
 3. It opens full-screen from its own icon and works offline.
 
-When you deploy an update, bump `CACHE` in `sw.js` (for example `v8` -> `v9`) so
+When you deploy an update, bump `CACHE` in `sw.js` (for example `v9` -> `v10`) so
 installed clients pick up the new files.
 
 ## Competitive mode / Facebook
@@ -95,16 +107,21 @@ players in every time zone.
 ## 3. Publish to Google Play / the App Store (with real ads)
 
 Wrap the `web` folder with [Capacitor](https://capacitorjs.com). You need
-Node.js, plus Android Studio for Android or Xcode on a Mac for iOS.
+Node.js, plus Android Studio for Android or Xcode on a Mac for iOS. Run these
+commands from the repository root; the root `capacitor.config.json` points
+`webDir` at `web/` so generated native projects stay outside the web assets.
 
 ```bash
-cd web
-npm i @capacitor/core @capacitor/cli @capacitor/android @capacitor-community/admob
-npx cap init "Orbit Runner" com.yourname.orbitrunner --web-dir .
+npm install
 npx cap add android
-npx cap sync
-npx cap open android      # build and run from Android Studio
+npx cap add ios          # macOS + Xcode only
+npm run cap:sync
+npm run cap:android
+npm run cap:ios
 ```
+
+The PWA path still works on iOS/Android without a store build. On iPhone use
+Safari → Share → Add to Home Screen; on Android use Chrome → Install app.
 
 Real ads: set `admobRewardedId` in `config.js`. With the Capacitor AdMob plugin
 present, `createAdProvider()` automatically uses `AdMobProvider`; in a plain
@@ -166,7 +183,7 @@ Crystals are not just a counter:
 | File | Purpose |
 |---|---|
 | `index.html` | Page that holds the game (safe-area aware) |
-| `config.js` | Facebook App ID and score-server URL |
+| `config.js` | Facebook App ID, score-server URL and AdMob IDs |
 | `game.js` | Game, ad system, ranked mode and leaderboard client |
 | `manifest.json` | App name, icon and full-screen settings for installing |
 | `sw.js` | Versioned offline cache with network-first navigation |

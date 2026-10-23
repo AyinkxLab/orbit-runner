@@ -1,0 +1,14 @@
+{
+  "appId": "com.ayinkx.orbitrunner",
+  "appName": "Orbit Runner",
+  "webDir": "web",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "AdMob": {
+      "initializeOnStart": true
+    }
+  }
+}

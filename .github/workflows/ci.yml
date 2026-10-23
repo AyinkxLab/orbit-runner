@@ -5,11 +5,10 @@ on:
   pull_request:
 
 jobs:
-  test:
+  web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -17,14 +16,40 @@ jobs:
         working-directory: web
         run: npm test
 
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
-      - name: Install desktop dependencies
+          python-version: ${{ matrix.python }}
+      - name: Install pygame
         run: pip install -r desktop/requirements.txt
       - name: Desktop tests
         run: python -m unittest discover -s desktop -p "test_*.py" -v
-      - name: Desktop headless selftest
+      - name: Headless selftest
         run: python desktop/orbit_runner.py --selftest
+      - name: Compile check
+        run: python -m py_compile desktop/orbit_runner.py
+
+  server:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.12"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
       - name: Server tests
         run: python -m unittest discover -s server -p "test_*.py" -v
+      - name: Compile check
+        run: python -m py_compile server/orbit_server.py

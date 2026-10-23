@@ -44,7 +44,33 @@ W, H = 900, 700
 CX, CY = W // 2, H // 2 + 20
 RINGS = [110, 180, 250]
 RING_NAMES = ("INNER", "MID", "OUTER")
-SAVE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "orbit_save.json")
+FONT_STACK = "consolas,menlo,dejavusansmono,liberationmono,couriernew,monospace"
+
+
+def _save_path():
+    """User-writable save location, portable across Windows/macOS/Linux.
+
+    In development the save stays next to the script. A PyInstaller build uses
+    the platform's user-data directory so the save survives app updates and
+    works when the install directory is read-only.
+    """
+    if not getattr(sys, "frozen", False):
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), "orbit_save.json")
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+    elif sys.platform == "darwin":
+        base = os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    else:
+        base = os.environ.get("XDG_DATA_HOME") or os.path.join(os.path.expanduser("~"), ".local", "share")
+    folder = os.path.join(base, "OrbitRunner")
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except OSError:
+        folder = os.path.expanduser("~")
+    return os.path.join(folder, "orbit_save.json")
+
+
+SAVE_FILE = _save_path()
 SHIELD_COST = 25
 COMBO_TIME = 6.0
 MAGNET_TIME = 8.0
@@ -621,10 +647,10 @@ class Game:
         self.ads = ads
         self.sfx = Sfx()
         self.fonts = {
-            "big": pygame.font.SysFont("consolas,menlo,monospace", 48, bold=True),
-            "hud": pygame.font.SysFont("consolas,menlo,monospace", 34, bold=True),
-            "mid": pygame.font.SysFont("consolas,menlo,monospace", 26, bold=True),
-            "small": pygame.font.SysFont("consolas,menlo,monospace", 18),
+            "big": pygame.font.SysFont(FONT_STACK, 48, bold=True),
+            "hud": pygame.font.SysFont(FONT_STACK, 34, bold=True),
+            "mid": pygame.font.SysFont(FONT_STACK, 26, bold=True),
+            "small": pygame.font.SysFont(FONT_STACK, 18),
         }
         self.save = load_save()
         self.sfx.muted = bool(self.save.get("muted", False))
