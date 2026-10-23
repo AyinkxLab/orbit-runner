@@ -14,12 +14,16 @@ const W = 720, H = 1280, CX = W / 2, CY = H / 2 + 40;
 const RINGS = [130, 215, 300];
 const RING_NAMES = ["INNER", "MID", "OUTER"];
 const SHIELD_COST = 25;
+const CONTINUE_BASE_COST = 5;
+const CONTINUE_MAX_COST = 320;
+const GEM_AD_REWARD = 5;
+const GEM_MISSION_REWARD = 10;
+const MAX_GEMS = 1000000000;
 const COMBO_TIME = 6;
 const MAGNET_TIME = 8;
 const SLOW_TIME = 6;
 const MAX_COMBO = 8;
 const MAX_ADS = 4;
-const MAX_TOKENS = 3;
 const POWERUP_TIME = 10;
 const TAU = Math.PI * 2;
 const LEVEL_NAMES = ["DUST", "EMBER", "FLARE", "CORONA", "NOVA", "PULSAR", "QUASAR", "VOID"];
@@ -62,6 +66,13 @@ const METEOR_TYPES = [
   { id: "gold", weight: 7, size: 0.80, speed: 1.05, near: 1, color: "#c8a04a", shade: "#7a5a20" },
   { id: "volatile", weight: 6, size: 1.05, speed: 0.95, near: 1, color: "#a05a3c", shade: "#602a1a" },
   { id: "splitter", weight: 5, size: 1.10, speed: 0.90, near: 1, color: "#7a8a6a", shade: "#4a5a3a" },
+];
+
+const GEM_PACKS = [
+  { id: "pocket", name: "POCKET", gems: 80, price: "$0.99", productId: "orbit_gems_80" },
+  { id: "pouch", name: "POUCH", gems: 240, price: "$2.99", productId: "orbit_gems_240" },
+  { id: "vault", name: "VAULT", gems: 650, price: "$6.99", productId: "orbit_gems_650" },
+  { id: "treasury", name: "TREASURY", gems: 1800, price: "$14.99", productId: "orbit_gems_1800" },
 ];
 
 const SHOP_ITEMS = [
@@ -147,10 +158,9 @@ const Save = {
   key: "orbit_runner_save",
   fresh() {
     return {
-      best: 0, bank: 0, muted: false, lifetime: 0,
+      best: 0, bank: 0, gems: 10, muted: false, lifetime: 0,
       ships: ["scout"], ship: "scout", contract: "standard",
       missions: [], missionDay: "", missionsDone: 0,
-      continueTokens: 0, freeContinueUsed: false,
       daily: { date: "", best: 0 }, ranked: { week: "", best: 0 },
       profile: null, ghost: null,
       tutorial: { done: false, step: 0 },
@@ -159,7 +169,8 @@ const Save = {
         equipped: { trail: "trail_default", skin: "skin_scout", title: "title_rookie" },
       },
       settings: { colorblind: false, reducedMotion: false, lowFx: false, music: true, sfx: true },
-      analytics: { runs: 0, deathsMeteor: 0, deathsFlare: 0, maxLevel: 0, ads: 0, boardOpens: 0, installClicks: 0 },
+      analytics: { runs: 0, deathsMeteor: 0, deathsFlare: 0, maxLevel: 0, ads: 0, boardOpens: 0, installClicks: 0,
+        gemPurchases: 0, gemAds: 0 },
       league: { week: "", tier: 0, leagueId: "", rank: 0 },
       stats: { runs: 0, flares: 0, near: 0, bosses: 0, powerups: 0 },
     };
@@ -173,6 +184,9 @@ const Save = {
 
     out.best = num(raw.best); out.bank = num(raw.bank); out.muted = raw.muted === true;
     out.lifetime = num(raw.lifetime);
+    // Gems are premium continues. Old continue tokens convert at 5 gems each;
+    // brand-new and pre-gem saves also get a small welcome balance.
+    out.gems = "gems" in raw ? Math.min(MAX_GEMS, num(raw.gems)) : 10 + 5 * Math.min(3, num(raw.continueTokens));
     // migrate pre-v3 saves: approximate lifetime crystals from the old score/bank
     if (!("lifetime" in raw)) out.lifetime = Math.max(out.bank, Math.floor(out.best / 10));
     if (Array.isArray(raw.ships)) {
@@ -183,8 +197,6 @@ const Save = {
     if (!out.ships.includes(out.ship)) out.ship = "scout";
     if (CONTRACTS.some(c => c.id === raw.contract)) out.contract = raw.contract;
     out.missionsDone = num(raw.missionsDone);
-    out.continueTokens = Math.min(MAX_TOKENS, num(raw.continueTokens));
-    out.freeContinueUsed = raw.freeContinueUsed === true;
     if (raw.daily && typeof raw.daily === "object") {
       out.daily.date = typeof raw.daily.date === "string" ? raw.daily.date : "";
       out.daily.best = num(raw.daily.best);
@@ -636,6 +648,107 @@ function createAdProvider() {
   return new MockAdProvider();
 }
 
+// ------------------------------------------------------------- gem store ----
+/* Purchases go through an IapProvider. Browsers use a clearly-labelled demo
+ * store; a Capacitor build with cordova-plugin-purchase uses the real store.
+ * Consumable gem products must also exist in the App Store / Play Console. */
+class DemoIapProvider {
+  constructor() {
+    this.demo = true;
+    this.available = true;
+    this.name = "DEMO";
+  }
+  async buy(pack) { return { ok: true, demo: true, transactionId: `demo-${pack.id}-${Date.now()}` }; }
+}
+
+class DisabledIapProvider {
+  constructor() {
+    this.demo = false;
+    this.available = false;
+    this.name = "UNAVAILABLE";
+  }
+  async buy() { throw new Error("Gem purchases are not configured."); }
+}
+
+class CdvIapProvider {
+  constructor(plugin) {
+    this.plugin = plugin;
+    this.store = plugin.store;
+    this.demo = false;
+    this.available = true;
+    this.name = "STORE";
+    this.pending = new Map();
+    this.initPromise = null;
+    this.ready = false;
+    const Platform = plugin.Platform || {};
+    const ProductType = plugin.ProductType || {};
+    const cap = typeof window !== "undefined" && window.Capacitor && window.Capacitor.getPlatform
+      ? window.Capacitor.getPlatform() : "android";
+    this.platform = cap === "ios" ? Platform.APPLE_APPSTORE : Platform.GOOGLE_PLAY;
+    try {
+      for (const pack of GEM_PACKS) {
+        this.store.register({
+          id: pack.productId,
+          type: ProductType.CONSUMABLE,
+          platform: this.platform,
+        });
+      }
+      this.store.when().approved(tx => this.approved(tx));
+    } catch (e) {
+      this.available = false;
+      this.lastError = e && e.message ? e.message : String(e);
+    }
+  }
+  async init() {
+    if (!this.available) throw new Error(this.lastError || "Store is not available.");
+    if (!this.initPromise) this.initPromise = Promise.resolve(this.store.initialize([this.platform]));
+    await this.initPromise;
+    this.ready = true;
+  }
+  async buy(pack) {
+    await this.init();
+    const product = (this.store.get && (this.store.get(pack.productId, this.platform) ||
+      this.store.get(pack.productId))) || null;
+    if (!product) throw new Error("This gem pack is not available in the store yet.");
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(pack.productId);
+        reject(new Error("The store did not finish the purchase."));
+      }, 120000);
+      this.pending.set(pack.productId, { resolve, reject, timer });
+      try {
+        const order = this.store.order(product);
+        if (!order) throw new Error("The store could not start the purchase.");
+      } catch (e) {
+        clearTimeout(timer);
+        this.pending.delete(pack.productId);
+        reject(e);
+      }
+    });
+  }
+  approved(tx) {
+    let pack = null;
+    try {
+      const id = tx && tx.products && tx.products[0] && tx.products[0].id;
+      pack = GEM_PACKS.find(p => p.productId === id) || null;
+      const pending = pack && this.pending.get(pack.productId);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pending.delete(pack.productId);
+        pending.resolve({ ok: true, transactionId: (tx && tx.transactionId) || "" });
+      }
+    } catch (e) { /* still finish the transaction below */ }
+    try { if (tx && tx.finish) tx.finish(); } catch (e) {}
+  }
+}
+
+function createIapProvider() {
+  const plugin = typeof window !== "undefined" && window.CdvPurchase;
+  if (plugin && plugin.store) return new CdvIapProvider(plugin);
+  if (CONFIG.gemStoreDemo !== false) return new DemoIapProvider();
+  return new DisabledIapProvider();
+}
+
 // --------------------------------------------------------- draw helpers ----
 function circle(c, x, y, r, col, line = 0) {
   c.beginPath(); c.arc(x, y, Math.max(0.5, r), 0, TAU);
@@ -773,10 +886,12 @@ function drawAircraft(c, x, y, angle, livery, time, thrust = 0) {
 
 // ----------------------------------------------------------------- game ----
 class Game {
-  constructor(ads) {
-    this.ads = ads; this.save = Save.load(); Sfx.muted = !!this.save.muted;
+  constructor(ads, iap) {
+    this.ads = ads; this.iap = iap || new DemoIapProvider();
+    this.save = Save.load(); Sfx.muted = !!this.save.muted;
     this.state = "title"; this.time = 0;
     this.buyShield = false; this.message = ""; this.buttons = []; this.paused = false;
+    this.gemStoreReturn = "title"; this.storeMessage = ""; this.storeBusy = false;
     this.mode = "classic"; this.contract = CONTRACTS[0]; this.ship = SHIPS[0];
     this.biome = BIOMES[0];
     this.rng = Math.random; this.ghost = this.save.ghost; this.rivalGhost = null; this.adsUsed = 0;
@@ -808,7 +923,7 @@ class Game {
       meteors: [], gems: [], parts: [], floats: [], score: 0, crystals: 0, bankedCrystals: 0,
       combo: 1, comboT: 0, comboTime: COMBO_TIME, maxCombo: 1, elapsed: 0, runTime: 0,
       spawnT: 1, gemT: 1.5, powerupT: 10, powerup: null, magnetT: 0, slowT: 0,
-      invuln: 1, shield: false, shake: 0, continueUsed: false, doubleUsed: false,
+      invuln: 1, shield: false, shake: 0, continues: 0, doubleUsed: false,
       paused: false, flareT: 0, flareRing: -1, flareCD: 12,
       nearMisses: 0, gemsCollected: 0, crystalGain: 0, powerupsTaken: 0, flaresDodged: 0,
       bossesCleared: 0, boss: null, hitStop: 0, flash: 0, musicT: 0.7, musicBeat: 0, trailT: 0,
@@ -955,7 +1070,7 @@ class Game {
     }
   }
   checkMissions() {
-    let reward = 0;
+    let reward = 0, bonusGems = 0;
     for (const m of this.save.missions) {
       if (m.completed) continue;
       const value = this.missionValue(m);
@@ -963,14 +1078,18 @@ class Game {
       if (m.progress >= m.target) {
         m.completed = true; reward += m.reward; this.save.missionsDone++;
         if (this.save.missionsDone % 5 === 0) {
-          this.save.continueTokens = Math.min(MAX_TOKENS, this.save.continueTokens + 1);
+          bonusGems += GEM_MISSION_REWARD;
+          this.save.gems = Math.min(MAX_GEMS, this.save.gems + GEM_MISSION_REWARD);
         }
       }
     }
-    if (reward > 0) {
-      this.save.bank += reward;
+    if (reward > 0 || bonusGems > 0) {
+      if (reward > 0) this.save.bank += reward;
       this.missionReward = reward;
-      this.message = `+${reward} mission crystals`;
+      this.message = [
+        reward > 0 ? `+${reward} mission crystals` : "",
+        bonusGems > 0 ? `+${bonusGems} bonus gems` : "",
+      ].filter(Boolean).join("  ");
     }
   }
   refreshUnlocks() {
@@ -995,10 +1114,12 @@ class Game {
     if (!CONTRACTS.some(c => c.id === id)) return;
     this.save.contract = id; Save.write(this.save); Sfx.play("pause");
   }
+  continueCost() {
+    return Math.min(CONTINUE_MAX_COST, CONTINUE_BASE_COST * Math.pow(2, this.continues));
+  }
   continueLabel() {
-    if (this.save.continueTokens > 0) return `[C] Use continue token (x${this.save.continueTokens})`;
-    if (!this.save.freeContinueUsed) return "[C] Free first continue";
-    return "[C] Watch ad -> CONTINUE";
+    const cost = this.continueCost();
+    return this.save.gems >= cost ? `CONTINUE  -  ${cost} GEMS` : `GET ${cost} GEMS TO CONTINUE`;
   }
   burst(x, y, cols, n, speed, life) {
     for (let i = 0; i < n; i++) {
@@ -1142,7 +1263,7 @@ class Game {
       ghost: this.ghostSamples.slice(0, 900),
       score: Math.floor(score), time: this.runTime, crystals: this.crystals, level: this.level,
       maxCombo: this.maxCombo, nearMisses: this.nearMisses, flaresDodged: this.flaresDodged,
-      bossesCleared: this.bossesCleared, continues: this.continueUsed ? 1 : 0,
+      bossesCleared: this.bossesCleared, continues: this.continues,
       doubles: this.doubleUsed ? 1 : 0, ship: "scout", contract: "standard", version: "3.1",
     };
     this.submission = { status: "pending", score: Math.floor(score), runId, mode };
@@ -1433,35 +1554,45 @@ class Game {
 
   // ---- ads and rewards --------------------------------------------------
   requestAd(kind) {
+    if (kind === "continue") return this.buyContinue();
     if (this.competitive) {
       this.message = "Competitive runs are one-life: no continues or ads.";
       return;
     }
-    if (kind === "continue" && this.continueUsed) return;
     if (kind === "double" && (this.doubleUsed || this.crystals <= 0)) return;
-    if (kind === "continue") {
-      if (this.save.continueTokens > 0) {
-        this.save.continueTokens--; Save.write(this.save); this.rewardContinue(); return;
-      }
-      if (!this.save.freeContinueUsed) {
-        this.save.freeContinueUsed = true; Save.write(this.save); this.rewardContinue(); return;
-      }
-    }
     if (!this.ads.isReady()) { this.message = "No ad available right now."; return; }
     if (this.adsUsed >= MAX_ADS) { this.message = "No ads left this session."; return; }
     this.adsUsed++;
     this.save.analytics.ads++;
     Save.write(this.save);
-    if (kind === "continue") this.ads.showRewarded(() => this.rewardContinue(), () => this.adClosed());
     if (kind === "double") this.ads.showRewarded(() => this.rewardDouble(), () => this.adClosed());
   }
-  rewardContinue() {
-    this.continueUsed = true; this.meteors = []; this.invuln = 3;
+  buyContinue() {
+    if (this.competitive) {
+      this.message = "Competitive runs are one-life: no continues or ads.";
+      return false;
+    }
+    if (this.state !== "over") return false;
+    const cost = this.continueCost();
+    if (this.save.gems < cost) {
+      this.message = `Need ${cost - this.save.gems} more gems.`;
+      this.openGemStore("over");
+      return false;
+    }
+    this.save.gems -= cost;
+    this.continues += 1;
+    Save.write(this.save);
+    this.rewardContinue(cost);
+    return true;
+  }
+  rewardContinue(cost = 0) {
+    this.meteors = []; this.invuln = 3;
     this.flareT = 0; this.flareRing = -1;
     this.flareCD = (this.contract.flareRate || 8) * this.biome.flareRate;
     this.boss = null; this.hitStop = 0;
     this.state = "play"; this.paused = false; this.message = "";
-    Sfx.play("reward"); this.float(CX, CY - 60, "SECOND CHANCE!", "#78ff8c");
+    Sfx.play("reward");
+    this.float(CX, CY - 60, cost > 0 ? `CONTINUE  -${cost} GEMS` : "SECOND CHANCE!", "#78ff8c");
   }
   rewardDouble() {
     this.doubleUsed = true;
@@ -1473,7 +1604,58 @@ class Game {
     this.message = `+${this.crystals / 2} bonus crystals banked!`;
     Sfx.play("reward");
   }
-  adClosed() { if (this.state === "over" && !this.message) this.message = "Ad closed early - no reward."; }
+  adClosed() {
+    if (this.state === "gems" && !this.storeMessage) this.storeMessage = "Ad closed early - no reward.";
+    else if (this.state === "over" && !this.message) this.message = "Ad closed early - no reward.";
+  }
+
+  // ---- gem store ---------------------------------------------------------
+  openGemStore(returnState = this.state === "over" ? "over" : "title") {
+    if (this.state !== "gems") this.gemStoreReturn = returnState;
+    this.state = "gems";
+    this.paused = false;
+    this.storeMessage = "";
+  }
+  closeGemStore() {
+    this.state = this.gemStoreReturn === "over" ? "over" : "title";
+    this.paused = false;
+  }
+  grantGems(amount, message = "") {
+    this.save.gems = Math.min(MAX_GEMS, this.save.gems + Math.max(0, Math.floor(amount)));
+    Save.write(this.save);
+    this.storeMessage = message;
+    Sfx.play("reward");
+  }
+  async buyGemPack(pack) {
+    if (this.storeBusy || !pack) return;
+    this.storeBusy = true;
+    this.storeMessage = "Opening store...";
+    try {
+      const result = await this.iap.buy(pack);
+      if (result && result.ok === false) throw new Error(result.error || "Purchase was not completed.");
+      this.save.analytics.gemPurchases++;
+      this.grantGems(pack.gems, result && result.demo
+        ? `Demo purchase: +${pack.gems} gems (no charge)`
+        : `Purchase complete: +${pack.gems} gems`);
+    } catch (e) {
+      this.storeMessage = e && e.message ? e.message : "Purchase failed.";
+    } finally {
+      this.storeBusy = false;
+    }
+  }
+  watchGemAd() {
+    if (this.storeBusy || this.ads.showing) return;
+    if (!this.ads.isReady()) { this.storeMessage = "No ad available right now."; return; }
+    if (this.adsUsed >= MAX_ADS) { this.storeMessage = "No ads left this session."; return; }
+    this.adsUsed++;
+    this.save.analytics.ads++;
+    this.save.analytics.gemAds++;
+    Save.write(this.save);
+    this.ads.showRewarded(
+      () => this.grantGems(GEM_AD_REWARD, `+${GEM_AD_REWARD} gems from ad`),
+      () => this.adClosed(),
+    );
+  }
 
   togglePause() {
     if (this.state !== "play" || this.ads.showing) return;
@@ -1519,6 +1701,12 @@ class Game {
       else if (kk === "3") this.shopTab = "title";
       return;
     }
+    if (this.state === "gems") {
+      if (kk === "escape" || kk === "b" || kk === "q") this.closeGemStore();
+      else if (kk >= "1" && kk <= "4") this.buyGemPack(GEM_PACKS[Number(kk) - 1]);
+      else if (kk === "a") this.watchGemAd();
+      return;
+    }
     if (this.state === "settings") {
       if (kk === "escape" || kk === "b" || kk === "q") this.goTitle();
       else if (kk >= "1" && kk <= "5") {
@@ -1539,6 +1727,7 @@ class Game {
       if (kk === "s") { this.shareChallenge(this.score); return; }
       const m = { c: "continue", d: "double" }[kk];
       if (m) this.requestAd(m);
+      if (kk === "g") this.openGemStore("over");
       if (kk === "r") this.beginMode(this.mode);
       if (kk === "t") this.goTitle();
       if (kk === "l") this.openBoard(this.mode === "daily" ? "daily" : "weekly");
@@ -1553,6 +1742,7 @@ class Game {
       if (kk === "l") { this.openBoard("weekly"); return; }
       if (kk === "f") { this.openBoard("friends"); return; }
       if (kk === "c") { this.openShop(); return; }
+      if (kk === "g") { this.openGemStore("title"); return; }
       if (kk === "o") { this.openSettings(); return; }
     }
     if (["ArrowUp", "w", "W"].includes(k)) this.action("up");
@@ -1562,7 +1752,8 @@ class Game {
   tap(x, y) {
     if (this.ads.showing) return this.ads.handleTap(x, y);
     for (const b of this.buttons) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b.fn();
-    if (this.paused || this.state === "board" || this.state === "shop" || this.state === "settings") return;
+    if (this.paused || this.state === "board" || this.state === "shop" ||
+        this.state === "settings" || this.state === "gems") return;
     if (this.state !== "over") this.action("tap");
   }
 
@@ -1914,6 +2105,45 @@ class Game {
   }
 
   // ---- render -----------------------------------------------------------
+  drawGemStore(c) {
+    this.drawSpace(c, 0, 0);
+    c.fillStyle = "rgba(3,3,10,0.74)"; c.fillRect(0, 0, W, H);
+    panel(c, 50, 60, W - 100, 1140, "rgba(7,10,22,0.95)", "rgba(60,220,180,0.24)", 26);
+    text(c, "GEM STORE", W / 2, 112, 46, "#3cdcb4", true);
+    text(c, "Gems revive your run. Each revive doubles the price.", W / 2, 150, 16, "#9696aa");
+    panel(c, 80, 182, W - 160, 68, "rgba(20,80,70,0.28)", "rgba(60,220,180,0.28)", 14);
+    gemIcon(c, 118, 216, 22, "#3cdcb4");
+    text(c, `${this.save.gems} GEMS`, 154, 216, 28, "#78ff8c", true, "left");
+    text(c, `NEXT CONTINUE ${this.continueCost()}`, W - 102, 216, 15, "#78e6ff", true, "right");
+    if (this.iap.demo) {
+      text(c, "DEMO STORE - no real charge in this browser build", W / 2, 272, 14, "#ffb06a");
+    } else if (!this.iap.available) {
+      text(c, "STORE UNAVAILABLE - configure native purchases", W / 2, 272, 14, "#ff8a8a");
+    }
+    GEM_PACKS.forEach((pack, i) => {
+      const y = 296 + i * 132;
+      panel(c, 70, y, W - 140, 116, "rgba(255,255,255,0.04)", "rgba(60,220,180,0.16)", 16);
+      gemIcon(c, 110, y + 58, 24, "#3cdcb4");
+      text(c, `+${pack.gems}`, 150, y + 46, 34, "#fff", true, "left");
+      text(c, pack.name, 150, y + 82, 15, "#78e6ff", true, "left");
+      text(c, pack.price, 390, y + 58, 26, "#ffd45a", true);
+      if (this.iap.available) {
+        this.smallButton(c, this.storeBusy ? "..." : "BUY", 500, y + 29, 120, 58,
+          "#3cdcb4", () => this.buyGemPack(pack));
+      } else {
+        text(c, "N/A", 560, y + 58, 20, "#55557a", true);
+      }
+    });
+    this.button(c, `WATCH AD  ->  +${GEM_AD_REWARD} GEMS`, 830, "#78e6ff",
+      () => this.watchGemAd(), 64, "rgba(20,60,90,0.35)");
+    this.button(c, this.gemStoreReturn === "over" ? "BACK TO RUN" : "BACK", 912,
+      "#c8c8dc", () => this.closeGemStore(), 64);
+    text(c, `Ads left this session: ${Math.max(0, MAX_ADS - this.adsUsed)}`, W / 2, 1004, 15, "#828296");
+    if (this.storeMessage) text(c, this.storeMessage, W / 2, 1046, 18, "#ffe678");
+    text(c, "1-4 buy packs - A watch ad - B / ESC back", W / 2, 1104, 16, "#828296");
+    if (this.iap.demo) text(c, "Native iOS/Android builds can use real store billing.", W / 2, 1140, 14, "#55557a");
+  }
+
   drawSettings(c) {
     this.drawSpace(c, 0, 0);
     c.fillStyle = "rgba(3,3,10,0.72)"; c.fillRect(0, 0, W, H);
@@ -2032,6 +2262,7 @@ class Game {
     if (this.state === "board") return this.drawBoard(c);
     if (this.state === "shop") return this.drawShop(c);
     if (this.state === "settings") return this.drawSettings(c);
+    if (this.state === "gems" && !this.ads.showing) return this.drawGemStore(c);
     if (this.ads.showing) return this.ads.draw(c);
     const canShake = this.shake > 0 && !this.save.settings.reducedMotion;
     const ox = canShake ? rand(-8, 8) : 0, oy = canShake ? rand(-8, 8) : 0;
@@ -2337,7 +2568,7 @@ class Game {
 
   drawMissions(c, y) {
     text(c, "DAILY MISSIONS", 80, y - 34, 22, "#c8c8dc", true, "left");
-    text(c, `TOKENS ${this.save.continueTokens}  DONE ${this.save.missionsDone}`, W - 80, y - 34, 18, "#78c8ff", false, "right");
+    text(c, `GEMS ${this.save.gems}  DONE ${this.save.missionsDone}`, W - 80, y - 34, 18, "#78c8ff", false, "right");
     this.save.missions.forEach((m, i) => this.missionLine(c, m, y + i * 42, 20));
   }
 
@@ -2387,10 +2618,12 @@ class Game {
       870, "#ff8a4a", () => this.beginMode("ranked"), 72, "rgba(120,50,20,0.35)");
     this.button(c, `DAILY CHALLENGE  ${dailyDate}`, 952, "#78c8ff", () => this.beginMode("daily"), 72,
       "rgba(20,60,90,0.35)");
-    this.smallButton(c, "LEADERBOARD", 80, 1034, 176, 62, "#b48cff",
-      () => this.openBoard(challengeDay ? "daily" : "weekly"));
-    this.smallButton(c, "CUSTOMIZE", 272, 1034, 176, 62, "#ff9adf", () => this.openShop());
-    this.smallButton(c, "SETTINGS", 464, 1034, 176, 62, "#78c8dc", () => this.openSettings());
+    [
+      ["BOARD", "#b48cff", () => this.openBoard(challengeDay ? "daily" : "weekly")],
+      ["CUSTOMIZE", "#ff9adf", () => this.openShop()],
+      [`GEMS ${this.save.gems}`, "#3cdcb4", () => this.openGemStore("title")],
+      ["SETTINGS", "#78c8dc", () => this.openSettings()],
+    ].forEach(([label, col, fn], i) => this.smallButton(c, label, 80 + i * 144, 1034, 128, 62, col, fn));
 
     const dailyBest = this.save.daily.date === dailyDate ? this.save.daily.best : 0;
     const rankedBest = this.save.ranked.week === (challengeWeek || weekKey()) ? this.save.ranked.best : 0;
@@ -2402,13 +2635,15 @@ class Game {
         : "Not connected - open the leaderboard to link Facebook";
     text(c, profileLine, W / 2, 1150, 17,
       !Social.configured ? "#ffb06a" : this.profile ? "#78ff8c" : "#828296");
-    text(c, `TITLE ${this.playerTitle}  BEST ${this.save.best}  BANK ${this.save.bank}  LIFE ${this.save.lifetime}  TOKENS ${this.save.continueTokens}`,
-      W / 2, 1178, 16, "#fff");
-    text(c, "Crystals: score + combo - bank for shields - lifetime unlocks ships",
-      W / 2, 1208, 16, "#78e6ff");
-    text(c, "1/2/3 contract - V ship - R ranked - L board - C shop - O settings - D daily",
-      W / 2, 1234, 16, "#9aa6c0");
-    text(c, "P pause - M mute - swipe up/down - tap to reverse", W / 2, 1258, 16, "#828296");
+    text(c, `BEST ${this.save.best}   CRYSTALS ${this.save.bank}   GEMS ${this.save.gems}   LIFE ${this.save.lifetime}`,
+      W / 2, 1176, 15, "#fff");
+    text(c, `TITLE ${this.playerTitle}   TIER ${tierFor(this.save.best).name}`,
+      W / 2, 1200, 15, "#c8c8dc");
+    text(c, "Crystals buy shields/cosmetics - gems revive runs",
+      W / 2, 1224, 15, "#78e6ff");
+    text(c, "1/2/3 contract - V ship - R ranked - L board - C shop - G gems - O settings",
+      W / 2, 1248, 14, "#9aa6c0");
+    text(c, "P pause - M mute - swipe up/down - tap to reverse", W / 2, 1270, 14, "#828296");
   }
 
   drawOver(c) {
@@ -2436,7 +2671,7 @@ class Game {
       W / 2, 392, 18, "#c8c8dc");
     text(c, `NEAR ${this.nearMisses}   FLARES ${this.flaresDodged}   SURGES ${this.bossesCleared}`,
       W / 2, 418, 17, "#9696aa");
-    text(c, `BANK ${this.save.bank}  LIFETIME ${this.save.lifetime}  TIER ${tierFor(this.save.best).name}  TITLE ${this.playerTitle}`,
+    text(c, `CRYSTALS ${this.save.bank}  GEMS ${this.save.gems}  LIFETIME ${this.save.lifetime}  TIER ${tierFor(this.save.best).name}`,
       W / 2, 444, 14, "#828296");
 
     panel(c, 68, 462, W - 136, 158, "rgba(10,16,30,0.65)", "rgba(120,200,255,0.12)", 14);
@@ -2482,17 +2717,17 @@ class Game {
     }
 
     let y = 642;
-    if (!this.continueUsed) {
-      const g = Math.floor(200 + 55 * Math.sin(this.time * 5));
-      this.button(c, this.continueLabel(), y, `rgb(${g},255,${g})`, () => this.requestAd("continue"), 92,
-        "rgba(60,140,40,0.45)");
-    } else {
-      text(c, "(continue already used this run)", W / 2, y + 42, 20, "#828296");
-    }
-    y += 118;
+    const continueCost = this.continueCost();
+    const canContinue = this.save.gems >= continueCost;
+    const g = Math.floor(200 + 55 * Math.sin(this.time * 5));
+    this.button(c, this.continueLabel(), y, canContinue ? `rgb(${g},255,${g})` : "#ffb06a",
+      () => this.requestAd("continue"), 84, canContinue ? "rgba(60,140,40,0.45)" : "rgba(120,70,20,0.35)");
+    this.smallButton(c, `GEM STORE  -  ${this.save.gems} GEMS`, 80, y + 92, W - 160, 44,
+      "#3cdcb4", () => this.openGemStore("over"));
+    y += 146;
     if (!this.doubleUsed && this.crystals > 0)
-      this.button(c, `WATCH AD -> DOUBLE (+${this.crystals})`, y, "#78e6ff", () => this.requestAd("double"), 82);
-    y += 105;
+      this.button(c, `WATCH AD -> DOUBLE (+${this.crystals})`, y, "#78e6ff", () => this.requestAd("double"), 76);
+    y += 88;
     this.button(c, "Restart", y, "#c8c8dc", () => this.beginMode(this.mode), 72);
     this.button(c, "Title", y + 88, "#c8c8dc", () => this.goTitle(), 72);
     this.smallButton(c, "SHARE RESULT CARD", 80, y + 176, W - 160, 54, "#ff9adf",
@@ -2613,7 +2848,7 @@ class Game {
 function boot() {
   const canvas = document.getElementById("game"), ctx = canvas.getContext("2d");
   const stage = document.getElementById("stage") || document.body;
-  const game = new Game(createAdProvider());
+  const game = new Game(createAdProvider(), createIapProvider());
   window.game = game;
   try {
     const params = new URLSearchParams(location.search);
@@ -2626,6 +2861,7 @@ function boot() {
     else if (mode === "daily") game.beginMode("daily");
     else if (mode === "board") game.openBoard("weekly");
     else if (mode === "shop") game.openShop();
+    else if (mode === "gems") game.openGemStore("title");
     else if (mode === "settings") game.openSettings();
   } catch (e) { /* no URL access */ }
 
@@ -2676,6 +2912,7 @@ function boot() {
 
 if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
+    DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
     dateKey, weekKey, mulberry32, W, H };
 else window.addEventListener("load", boot);

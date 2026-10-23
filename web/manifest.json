@@ -16,7 +16,8 @@
   "shortcuts": [
     { "name": "Ranked Weekly", "short_name": "Ranked", "url": "./?mode=ranked", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
     { "name": "Daily Challenge", "short_name": "Daily", "url": "./?mode=daily", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
-    { "name": "Leaderboard", "short_name": "Board", "url": "./?mode=board", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
+    { "name": "Leaderboard", "short_name": "Board", "url": "./?mode=board", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Gem Store", "short_name": "Gems", "url": "./?mode=gems", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
   ],
   "icons": [
     { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },

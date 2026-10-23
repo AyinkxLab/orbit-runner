@@ -49,14 +49,19 @@ meta-progression.
   - `DRIFTER` (700) - wider magnet, faster ring shifts
   - `GAMBLER` (1500) - crystals worth 2x, but no starting shield
 - **Daily missions:** three rotating objectives with crystal rewards. Every five
-  completed missions grants a continue token (max 3).
+  completed missions grants 10 gems.
 - **Daily challenge:** a deterministic seed for the local date, with its own best
   score and a "new daily best" badge.
 - **Ghost:** your best classic run is replayed as a translucent ship while you
   play, so you can race it.
-- **Continue economy:** first continue is free, then continue tokens, then a
-  rewarded ad. Ads are capped per session. Double-crystals is always an optional
-  rewarded ad.
+- **Gem Store:** four gem packs (`80 / 240 / 650 / 1800`), plus a rewarded ad
+  for 5 gems. Native builds use App Store / Play Store billing; browser builds
+  show a clearly labelled demo store.
+- **Gem revives:** the first revive costs 5 gems. Each additional revive in the
+  same run doubles the price: 5, 10, 20, 40 ... capped at 320. Gems never affect
+  ranked or daily runs.
+- **Ads:** rewarded ads can add gems in the store or double the crystals from a
+  completed run. Ads are capped per session.
 - **Juice:** hit-stop, screen flash, power-up trails, combo sound tiers, a subtle
   procedural beat, and auto-pause when the window loses focus.
 
@@ -79,8 +84,24 @@ meta-progression.
 - **Real rewarded ads:** a native AdMob provider for Capacitor builds with
   consent, reward-event handling and preloading; browser builds keep the
   simulated ad until an ad unit id is configured.
+- **Gem billing:** a `CdvIapProvider` for consumable gem packs through
+  `cordova-plugin-purchase`; browser builds use a labelled demo store. Product
+  IDs and store setup are documented in [`web/README.md`](web/README.md).
 
 The screenshots in `desktop/` are produced by `--selftest --shots`.
+
+## What gems do
+
+Gems are the premium revive currency. They are separate from crystals so the
+gem store never buys a leaderboard advantage.
+
+- A revive costs 5 gems, then 10, 20, 40 ... each time the price doubles.
+- If the wallet is short, the game-over screen opens the Gem Store and keeps
+  the run alive while you buy or watch an ad.
+- Gems can be earned from every fifth completed mission (10 gems) and from the
+  rewarded ad in the Gem Store (5 gems).
+- Ranked and daily runs still have no revives, ads, purchased shields or loadout
+  perks.
 
 ## What crystals do
 
@@ -221,7 +242,7 @@ and service-worker support.
 ## Tests
 
 ```bash
-# Python: 20 tests covering accounting, save migration, missions, tokens,
+# Python: 21 tests covering accounting, save migration, missions, gems,
 # contracts, ships, daily seed, flares, shields, boss surges and ghosts
 python -m unittest discover -s desktop -p "test_*.py" -v
 
@@ -229,8 +250,8 @@ python -m unittest discover -s desktop -p "test_*.py" -v
 python desktop/orbit_runner.py --selftest
 python desktop/orbit_runner.py --selftest --shots
 
-# Web: 36 Node tests for gameplay, missions, ranked mode, boards, AdMob,
-# biomes, tutorials, shop and settings
+# Web: 38 Node tests for gameplay, missions, gem continues and store,
+# ranked mode, boards, AdMob, biomes, tutorials, shop and settings
 cd web && npm test
 
 # Score server: 21 tests for seeds, validation, SQLite ranking, pagination,
@@ -269,7 +290,7 @@ python -m unittest discover -s server -p "test_*.py" -v
   Verify the API against your installed `@capacitor-community/admob` version,
   initialize the SDK, grant rewards from the SDK's reward event, and add the
   required consent/ATT flow.
-- The online ladder, leagues, rival ghosts, cosmetics shop, settings, share cards
+- The online ladder, leagues, rival ghosts, gem store, cosmetics shop, settings, share cards
   and install prompt are in the web/PWA build. The desktop build keeps gameplay
   and visual parity (biomes, meteor varieties, aircraft, effects) but is offline.
 - There is no license file in the repository yet; pick one before publishing.

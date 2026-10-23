@@ -1,5 +1,5 @@
 """
-ORBIT RUNNER  -  a one-button-ish arcade dodger with a rewarded-ad continue.
+ORBIT RUNNER  -  a one-button-ish arcade dodger with gem-priced revives.
 
 You orbit a dying star on three rings while meteors rain inward.
   UP / W      jump to the outer ring
@@ -18,10 +18,11 @@ Systems
   * Solar flares burn one ring; be elsewhere when they fire.
   * Corona Surge every 5 levels: collect 3 cores before the timer expires.
   * 3 daily missions, lifetime-crystal ship unlocks, run contracts, daily seed,
-    best-run ghost, continue tokens and a first-run free continue.
+    best-run ghost, a gem store and gem-priced revives.
 
 When you die:
-  [C] Continue (token / first free / rewarded ad)
+  [C] Revive with gems (5, then 10, 20 ... doubles each time)
+  [G] Open the Gem Store (buy packs / watch an ad for gems)
   [D] Watch an ad -> DOUBLE the crystals you collected this run
   [R] Restart / [T] Title
 
@@ -72,12 +73,16 @@ def _save_path():
 
 SAVE_FILE = _save_path()
 SHIELD_COST = 25
+CONTINUE_BASE_COST = 5
+CONTINUE_MAX_COST = 320
+GEM_AD_REWARD = 5
+GEM_MISSION_REWARD = 10
+MAX_GEMS = 1_000_000_000
 COMBO_TIME = 6.0
 MAGNET_TIME = 8.0
 SLOW_TIME = 6.0
 MAX_COMBO = 8
 MAX_ADS = 4
-MAX_TOKENS = 3
 POWERUP_TIME = 10.0
 LEVEL_NAMES = ("DUST", "EMBER", "FLARE", "CORONA", "NOVA", "PULSAR", "QUASAR", "VOID")
 POWERUP_COLORS = {"shield": (120, 200, 255), "magnet": (255, 120, 220), "slow": (180, 140, 255)}
@@ -137,6 +142,13 @@ CONTRACTS = [
      "crystal_mul": 2, "meteor_mul": 1.25, "flare_rate": 0},
 ]
 
+GEM_PACKS = [
+    {"id": "pocket", "name": "POCKET", "gems": 80, "price": "$0.99"},
+    {"id": "pouch", "name": "POUCH", "gems": 240, "price": "$2.99"},
+    {"id": "vault", "name": "VAULT", "gems": 650, "price": "$6.99"},
+    {"id": "treasury", "name": "TREASURY", "gems": 1800, "price": "$14.99"},
+]
+
 MISSION_POOL = [
     {"id": "run_crystals", "text": "Crystals in one run", "metric": "run_crystals", "target": 15, "reward": 30},
     {"id": "run_near", "text": "Near-misses in one run", "metric": "run_near", "target": 8, "reward": 35},
@@ -158,10 +170,9 @@ MISSION_POOL = [
 
 def fresh_save():
     return {
-        "best": 0, "bank": 0, "muted": False, "lifetime": 0,
+        "best": 0, "bank": 0, "gems": 10, "muted": False, "lifetime": 0,
         "ships": ["scout"], "ship": "scout", "contract": "standard",
         "missions": [], "mission_day": "", "missions_done": 0,
-        "continue_tokens": 0, "free_continue_used": False,
         "daily": {"date": "", "best": 0}, "ghost": None,
         "stats": {"runs": 0, "flares": 0, "near": 0, "bosses": 0, "powerups": 0},
     }
@@ -191,6 +202,8 @@ def load_save():
 
     out["best"] = _num(raw.get("best"))
     out["bank"] = _num(raw.get("bank"))
+    out["gems"] = min(MAX_GEMS, _num(raw["gems"])) if "gems" in raw else \
+        10 + 5 * min(3, _num(raw.get("continue_tokens")))
     out["muted"] = raw.get("muted") is True
     out["lifetime"] = _num(raw.get("lifetime"))
     # migrate pre-v3 saves: approximate lifetime crystals from the old score/bank
@@ -211,8 +224,6 @@ def load_save():
         out["contract"] = raw.get("contract")
 
     out["missions_done"] = _num(raw.get("missions_done"))
-    out["continue_tokens"] = min(MAX_TOKENS, _num(raw.get("continue_tokens")))
-    out["free_continue_used"] = raw.get("free_continue_used") is True
     daily = raw.get("daily")
     if isinstance(daily, dict):
         out["daily"]["date"] = daily.get("date") if isinstance(daily.get("date"), str) else ""
@@ -640,7 +651,7 @@ class Powerup:
 
 
 class Game:
-    TITLE, PLAY, OVER = "title", "play", "over"
+    TITLE, PLAY, OVER, GEMS = "title", "play", "over", "gems"
 
     def __init__(self, screen, ads: AdProvider):
         self.screen = screen
@@ -659,6 +670,8 @@ class Game:
         self.state = self.TITLE
         self.buy_shield = False
         self.message = ""
+        self.gem_store_return = self.TITLE
+        self.store_message = ""
         self.time = 0.0
         self.paused = False
         self.mode = "classic"
@@ -714,7 +727,7 @@ class Game:
         self.invuln = 1.0
         self.shield = False
         self.shake = 0.0
-        self.continue_used = False
+        self.continues = 0
         self.double_used = False
         self.paused = False
         self.flare_t = 0.0
@@ -927,6 +940,7 @@ class Game:
 
     def check_missions(self):
         reward = 0
+        bonus_gems = 0
         for mission in self.save["missions"]:
             if mission["completed"]:
                 continue
@@ -938,11 +952,18 @@ class Game:
                 reward += mission["reward"]
                 self.save["missions_done"] += 1
                 if self.save["missions_done"] % 5 == 0:
-                    self.save["continue_tokens"] = min(MAX_TOKENS, self.save["continue_tokens"] + 1)
-        if reward > 0:
-            self.save["bank"] += reward
+                    bonus_gems += GEM_MISSION_REWARD
+                    self.save["gems"] = min(MAX_GEMS, self.save["gems"] + GEM_MISSION_REWARD)
+        if reward > 0 or bonus_gems > 0:
+            if reward > 0:
+                self.save["bank"] += reward
             self.mission_reward = reward
-            self.message = f"+{reward} mission crystals"
+            parts = []
+            if reward > 0:
+                parts.append(f"+{reward} mission crystals")
+            if bonus_gems > 0:
+                parts.append(f"+{bonus_gems} bonus gems")
+            self.message = "  ".join(parts)
 
     def refresh_unlocks(self):
         changed = False
@@ -973,12 +994,14 @@ class Game:
         write_save(self.save)
         self.sfx.play("pause")
 
+    def continue_cost(self):
+        return min(CONTINUE_MAX_COST, CONTINUE_BASE_COST * (2 ** self.continues))
+
     def continue_label(self):
-        if self.save["continue_tokens"] > 0:
-            return f"[C] Use continue token (x{self.save['continue_tokens']})"
-        if not self.save["free_continue_used"]:
-            return "[C] Free first continue"
-        return "[C] Watch ad  ->  CONTINUE"
+        cost = self.continue_cost()
+        if self.save["gems"] >= cost:
+            return f"[C] CONTINUE  -  {cost} GEMS"
+        return f"[C] GET {cost} GEMS TO CONTINUE"
 
     # ---- banking / death --------------------------------------------------
     def bank_crystals(self):
@@ -1023,21 +1046,11 @@ class Game:
 
     # ---- ads and rewards --------------------------------------------------
     def request_ad(self, kind):
-        if kind == "continue" and self.continue_used:
+        if kind == "continue":
+            self.buy_continue()
             return
         if kind == "double" and (self.double_used or self.crystals <= 0):
             return
-        if kind == "continue":
-            if self.save["continue_tokens"] > 0:
-                self.save["continue_tokens"] -= 1
-                write_save(self.save)
-                self.reward_continue()
-                return
-            if not self.save["free_continue_used"]:
-                self.save["free_continue_used"] = True
-                write_save(self.save)
-                self.reward_continue()
-                return
         if not self.ads.is_ready():
             self.message = "No ad available right now."
             return
@@ -1045,13 +1058,24 @@ class Game:
             self.message = "No ads left this session."
             return
         self.ads_used += 1
-        if kind == "continue":
-            self.ads.show_rewarded(self.reward_continue, self.ad_closed)
-        elif kind == "double":
+        if kind == "double":
             self.ads.show_rewarded(self.reward_double, self.ad_closed)
 
-    def reward_continue(self):
-        self.continue_used = True
+    def buy_continue(self):
+        if self.state != self.OVER:
+            return False
+        cost = self.continue_cost()
+        if self.save["gems"] < cost:
+            self.message = f"Need {cost - self.save['gems']} more gems."
+            self.open_gem_store(self.OVER)
+            return False
+        self.save["gems"] -= cost
+        self.continues += 1
+        write_save(self.save)
+        self.reward_continue(cost)
+        return True
+
+    def reward_continue(self, cost=0):
         self.meteors.clear()
         self.invuln = 3.0
         self.flare_t = 0.0
@@ -1063,7 +1087,8 @@ class Game:
         self.paused = False
         self.message = ""
         self.sfx.play("reward")
-        self.add_float(CX, CY - 40, "SECOND CHANCE!", (120, 255, 140))
+        label = f"CONTINUE  -{cost} GEMS" if cost else "SECOND CHANCE!"
+        self.add_float(CX, CY - 40, label, (120, 255, 140))
 
     def reward_double(self):
         self.double_used = True
@@ -1076,8 +1101,48 @@ class Game:
         self.sfx.play("reward")
 
     def ad_closed(self):
-        if self.state == self.OVER and not self.message:
+        if self.state == self.GEMS and not self.store_message:
+            self.store_message = "Ad closed early - no reward."
+        elif self.state == self.OVER and not self.message:
             self.message = "Ad closed early - no reward."
+
+    # ---- gem store --------------------------------------------------------
+    def open_gem_store(self, return_state=None):
+        if self.state != self.GEMS:
+            self.gem_store_return = return_state or (self.OVER if self.state == self.OVER else self.TITLE)
+        self.state = self.GEMS
+        self.paused = False
+        self.store_message = ""
+
+    def close_gem_store(self):
+        self.state = self.OVER if self.gem_store_return == self.OVER else self.TITLE
+        self.paused = False
+
+    def grant_gems(self, amount, message=""):
+        self.save["gems"] = min(MAX_GEMS, self.save["gems"] + max(0, int(amount)))
+        write_save(self.save)
+        self.store_message = message
+        self.sfx.play("reward")
+
+    def buy_gem_pack(self, pack):
+        if not pack:
+            return
+        self.grant_gems(pack["gems"], f"Demo purchase: +{pack['gems']} gems (no charge)")
+
+    def watch_gem_ad(self):
+        if self.ads.showing:
+            return
+        if not self.ads.is_ready():
+            self.store_message = "No ad available right now."
+            return
+        if self.ads_used >= MAX_ADS:
+            self.store_message = "No ads left this session."
+            return
+        self.ads_used += 1
+        self.ads.show_rewarded(
+            lambda: self.grant_gems(GEM_AD_REWARD, f"+{GEM_AD_REWARD} gems from ad"),
+            self.ad_closed,
+        )
 
     def toggle_pause(self):
         if self.state != self.PLAY or self.ads.showing:
@@ -1266,6 +1331,8 @@ class Game:
                 self.select_contract(k - pygame.K_1)
             elif k == pygame.K_d:
                 self.start_run("daily")
+            elif k == pygame.K_g:
+                self.open_gem_store(self.TITLE)
         elif self.state == self.PLAY:
             if k in (pygame.K_UP, pygame.K_w) and self.ring < 2:
                 self.ring += 1
@@ -1276,11 +1343,20 @@ class Game:
             elif k == pygame.K_SPACE:
                 self.dir *= -1
                 self.sfx.play("jump")
+        elif self.state == self.GEMS:
+            if k in (pygame.K_b, pygame.K_q):
+                self.close_gem_store()
+            elif k in (pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4):
+                self.buy_gem_pack(GEM_PACKS[k - pygame.K_1])
+            elif k == pygame.K_a:
+                self.watch_gem_ad()
         elif self.state == self.OVER:
             if k == pygame.K_c:
                 self.request_ad("continue")
             elif k == pygame.K_d:
                 self.request_ad("double")
+            elif k == pygame.K_g:
+                self.open_gem_store(self.OVER)
             elif k == pygame.K_r:
                 self.start_run(self.mode)
             elif k == pygame.K_t:
@@ -1579,6 +1655,10 @@ class Game:
         if self.ads.showing:
             self.ads.draw(s, self.fonts)
             return
+        if self.state == self.GEMS:
+            self.draw_space(s)
+            self.draw_gem_store()
+            return
         ox = oy = 0
         if self.shake > 0:
             ox, oy = random.randint(-6, 6), random.randint(-6, 6)
@@ -1819,12 +1899,12 @@ class Game:
         else:
             lifetime += "   ALL SHIPS UNLOCKED"
         blit_l(s, f["small"], lifetime, (150, 150, 178), 240, 102)
-        blit_l(s, f["small"], f"BEST {self.save['best']}   BANK {self.save['bank']}   TOKENS {self.save['continue_tokens']}",
+        blit_l(s, f["small"], f"BEST {self.save['best']}   CRYSTALS {self.save['bank']}   GEMS {self.save['gems']}",
                (200, 200, 220), 32, 126)
 
         draw_panel(s, 16, 156, W - 32, 174, (8, 12, 24), 195, (120, 200, 255, 45))
         blit_l(s, f["small"], "DAILY MISSIONS", (200, 200, 220), 32, 168)
-        blit_r(s, f["small"], f"TOKENS {self.save['continue_tokens']}   DONE {self.save['missions_done']}",
+        blit_r(s, f["small"], f"GEMS {self.save['gems']}   DONE {self.save['missions_done']}",
                (120, 200, 255), W - 32, 168)
         for i, mission in enumerate(self.save["missions"]):
             self.draw_mission_line(mission, 198 + i * 32)
@@ -1841,7 +1921,7 @@ class Game:
                (120, 120, 145), 32, 410)
 
         blit_c(s, f["mid"], f"SPACE launch - {self.contract['name']}", (255, 255, 255), 466)
-        blit_c(s, f["small"], "D = daily challenge   V = ship   1/2/3 = contract", (170, 170, 200), 502)
+        blit_c(s, f["small"], "D daily   V ship   1/2/3 contract   G gem store", (170, 170, 200), 502)
 
         bank = self.save["bank"]
         daily_best = self.save["daily"]["best"] if self.save["daily"]["date"] == date_key() else 0
@@ -1851,7 +1931,7 @@ class Game:
         if bank >= SHIELD_COST or self.buy_shield:
             tag = "[B] shield: ON" if self.buy_shield else f"[B] buy shield ({SHIELD_COST})"
             blit_c(s, f["small"], tag, (120, 200, 255), 562)
-        blit_c(s, f["small"], "Crystals: score + combo - bank for shields - lifetime unlocks ships",
+        blit_c(s, f["small"], "Crystals buy shields - gems revive runs - lifetime unlocks ships",
                (120, 230, 255), 590)
         blit_c(s, f["small"], "Power-ups: S shield - M magnet - T time warp", (255, 154, 223), 614)
         blit_c(s, f["small"], "Dodge flares - collect 3 cores during a Corona Surge - missions pay crystals",
@@ -1886,7 +1966,7 @@ class Game:
                f"NEAR {self.near_misses}  FLARES {self.flares_dodged}  SURGES {self.bosses_cleared}",
                (150, 150, 180), 242)
         blit_c(s, f["small"],
-               f"BANK {self.save['bank']}   LIFETIME {self.save['lifetime']}   TIER {tier_for(self.save['best'])[0]}",
+               f"CRYSTALS {self.save['bank']}   GEMS {self.save['gems']}   LIFETIME {self.save['lifetime']}   TIER {tier_for(self.save['best'])[0]}",
                (120, 120, 145), 266)
 
         draw_panel(s, 50, 282, W - 100, 128, (10, 16, 30), 180, (120, 200, 255, 40), 14)
@@ -1894,20 +1974,46 @@ class Game:
         for i, mission in enumerate(self.save["missions"]):
             self.draw_mission_line(mission, 318 + i * 32)
 
-        y = 420
-        if not self.continue_used:
-            p = int(200 + 55 * math.sin(self.time * 5))
-            pygame.draw.rect(s, (40, p // 3, 20), (W // 2 - 270, y - 8, 540, 44), border_radius=10)
-            blit_c(s, f["mid"], self.continue_label(), (p, 255, p), y)
-        else:
-            blit_c(s, f["small"], "(continue already used this run)", (130, 130, 150), y + 8)
-        y += 62
+        y = 424
+        p = int(200 + 55 * math.sin(self.time * 5))
+        pygame.draw.rect(s, (40, p // 3, 20), (W // 2 - 270, y - 10, 540, 46), border_radius=10)
+        blit_c(s, f["mid"], self.continue_label(), (p, 255, p), y + 5)
+        blit_c(s, f["small"], f"[G] GEM STORE  -  {self.save['gems']} gems   (price doubles each revive)",
+               (60, 220, 180), y + 44)
+        y += 78
         if not self.double_used and self.crystals > 0:
             blit_c(s, f["mid"], f"[D] Watch ad  ->  DOUBLE crystals (+{self.crystals})", (120, 230, 255), y)
-        y += 58
+            y += 40
         blit_c(s, f["small"], "[R] restart     [T] title", (200, 200, 220), y)
         if self.message:
             blit_c(s, f["small"], self.message, (255, 230, 120), y + 32)
+
+    def draw_gem_store(self):
+        f = self.fonts
+        s = self.screen
+        veil = pygame.Surface((W, H), pygame.SRCALPHA)
+        veil.fill((0, 0, 0, 190))
+        s.blit(veil, (0, 0))
+        draw_panel(s, 70, 35, W - 140, 630, (7, 10, 22), 240, (60, 220, 180, 55), 24)
+        blit_c(s, f["big"], "GEM STORE", (60, 220, 180), 76)
+        blit_c(s, f["small"], "Gems revive your run. The price doubles each revive.", (150, 150, 178), 116)
+        draw_panel(s, 95, 136, W - 190, 46, (20, 80, 70), 210, (60, 220, 180, 70), 12)
+        draw_gem_icon(s, 120, 159, 15)
+        blit_l(s, f["small"], f"{self.save['gems']} GEMS", (120, 255, 140), 145, 149)
+        blit_r(s, f["small"], f"NEXT CONTINUE {self.continue_cost()}", (120, 230, 255), W - 115, 149)
+        blit_c(s, f["small"], "DEMO STORE - no real charge in this desktop build", (255, 176, 106), 198)
+        for i, pack in enumerate(GEM_PACKS):
+            y = 220 + i * 92
+            draw_panel(s, 100, y, W - 200, 78, (16, 22, 34), 190, (60, 220, 180, 45), 12)
+            draw_gem_icon(s, 132, y + 39, 17)
+            blit_l(s, f["mid"], f"+{pack['gems']}", (255, 255, 255), 162, y + 23)
+            blit_l(s, f["small"], pack["name"], (120, 230, 255), 162, y + 52)
+            blit_l(s, f["mid"], pack["price"], (255, 212, 90), 430, y + 38)
+            blit_r(s, f["small"], f"[{i + 1}] BUY", (60, 220, 180), W - 125, y + 39)
+        blit_c(s, f["small"], f"[A] Watch ad  ->  +{GEM_AD_REWARD} gems     [B] "
+               + ("Back to run" if self.gem_store_return == self.OVER else "Back"), (170, 170, 200), 606)
+        if self.store_message:
+            blit_c(s, f["small"], self.store_message, (255, 230, 120), 636)
 
     def draw_pause(self):
         f = self.fonts
@@ -2046,15 +2152,6 @@ def run_selftest(game, shots=False):
     crystals_at_death = game.crystals
     bank_at_death = game.save["bank"]
 
-    # use the ad path, not the free first continue
-    game.save["free_continue_used"] = True
-    game.save["continue_tokens"] = 0
-    game.message = ""
-    key(pygame.K_c)
-    step(1)
-    key(pygame.K_x)
-    assert game.state == game.OVER and not game.continue_used and "no reward" in game.message
-
     key(pygame.K_d)
     assert game.ads.showing
     step(2)
@@ -2064,23 +2161,38 @@ def run_selftest(game, shots=False):
     assert game.save["bank"] == bank_at_death + crystals_at_death, "double ad bank mismatch"
     assert game.crystals == crystals_at_death * 2
 
+    # gem store demo purchase
+    game.save["gems"] = 100
+    key(pygame.K_g)
+    assert game.state == game.GEMS
+    game.draw()
+    shot("orbit_gem_store.png")
+    key(pygame.K_1)
+    assert game.save["gems"] == 180, "gem pack did not credit"
+    key(pygame.K_b)
+    assert game.state == game.OVER
+
+    # first and second continue use gems and double in price
     game.message = ""
     bank_before_continue = game.save["bank"]
     key(pygame.K_c)
-    step(6)
-    assert game.state == game.PLAY and game.continue_used and game.score >= score_at_death
-    assert game.invuln > 0
-    assert game.save["bank"] == bank_before_continue, "continue changed the bank"
     step(1)
+    assert game.state == game.PLAY and game.continues == 1
+    assert game.score >= score_at_death
+    assert game.invuln > 0
+    assert game.save["gems"] == 175
+    assert game.save["bank"] == bank_before_continue, "continue changed the bank"
     shot("orbit_play.png")
     for _ in range(60 * 120):
         game.update(1 / 60)
         if game.state == game.OVER:
             break
+    assert game.state == game.OVER
     key(pygame.K_c)
-    assert not game.ads.showing, "continue offered twice"
-    key(pygame.K_r)
-    assert game.state == game.PLAY and not game.continue_used
+    assert game.state == game.PLAY and game.continues == 2
+    assert game.save["gems"] == 165
+    game.start_run()
+    assert game.state == game.PLAY and game.continues == 0
     print("SELFTEST OK  (score at first death: %d, shots: %s)" % (score_at_death, shot_dir))
     try:
         os.remove(SAVE_FILE)

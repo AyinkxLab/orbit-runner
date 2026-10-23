@@ -183,7 +183,7 @@ class OrbitRunnerTests(unittest.TestCase):
         self.assertTrue(g.shield)
 
     # ---- meta progression -------------------------------------------------
-    def test_missions_complete_and_award_tokens(self):
+    def test_missions_complete_and_award_gems(self):
         g = self.game
         g.save["missions"] = [mission("run_crystals")]
         g.crystal_gain = 15
@@ -193,11 +193,11 @@ class OrbitRunnerTests(unittest.TestCase):
         self.assertGreaterEqual(g.save["bank"], 30)
 
         g.save["missions_done"] = 4
-        g.save["continue_tokens"] = 0
+        g.save["gems"] = 0
         g.save["missions"] = [mission("run_level")]
         g.elapsed = 60
         g.check_missions()
-        self.assertEqual(g.save["continue_tokens"], 1)
+        self.assertEqual(g.save["gems"], 10)
 
     def test_contract_and_ship_modifiers(self):
         g = self.game
@@ -217,33 +217,50 @@ class OrbitRunnerTests(unittest.TestCase):
         g.start_run("daily")
         self.assertEqual(first, (g.seed, g.contract["id"]))
 
-    def test_continue_token_skips_ad(self):
+    def test_gem_continue_doubles_in_price(self):
         g = self.game
         self.reset_over(5)
         g.die()
-        g.save["free_continue_used"] = True
-        g.save["continue_tokens"] = 1
+        g.save["gems"] = 100
+        self.assertEqual(g.continue_cost(), 5)
         g.request_ad("continue")
         self.assertEqual(g.state, g.PLAY)
-        self.assertEqual(g.save["continue_tokens"], 0)
-        self.assertFalse(g.ads.showing)
+        self.assertEqual(g.save["gems"], 95)
+        self.assertEqual(g.continues, 1)
 
-    def test_first_continue_is_free(self):
+        g.die()
+        self.assertEqual(g.continue_cost(), 10)
+        g.request_ad("continue")
+        self.assertEqual(g.state, g.PLAY)
+        self.assertEqual(g.save["gems"], 85)
+        self.assertEqual(g.continues, 2)
+
+    def test_insufficient_gems_opens_store(self):
         g = self.game
         self.reset_over(5)
         g.die()
-        g.save["free_continue_used"] = False
-        g.save["continue_tokens"] = 0
+        g.save["gems"] = 2
         g.request_ad("continue")
-        self.assertEqual(g.state, g.PLAY)
-        self.assertTrue(g.save["free_continue_used"])
-        self.assertFalse(g.ads.showing)
+        self.assertEqual(g.state, g.GEMS)
+        self.assertIn("more gems", g.message)
+
+    def test_demo_gem_store_and_ad_reward(self):
+        g = self.game
+        g.save["gems"] = 0
+        g.open_gem_store(g.TITLE)
+        g.buy_gem_pack(orr.GEM_PACKS[0])
+        self.assertEqual(g.save["gems"], orr.GEM_PACKS[0]["gems"])
+        self.assertIn("Demo purchase", g.store_message)
+        g.watch_gem_ad()
+        self.assertTrue(g.ads.showing)
+        g.ads.t = g.ads.DURATION + 0.6
+        g.ads.update(0.01)
+        self.assertEqual(g.save["gems"], orr.GEM_PACKS[0]["gems"] + 5)
 
     def test_ad_cap(self):
         g = self.game
         self.reset_over(5)
         g.die()
-        g.save["free_continue_used"] = True
         g.ads_used = 4
         g.request_ad("double")
         self.assertFalse(g.ads.showing)

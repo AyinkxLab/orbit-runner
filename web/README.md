@@ -3,15 +3,17 @@
 A phone-ready version of the game that you can install. It has touch controls,
 portrait layout, vibration, offline support, power-ups, solar flares, Corona
 Surges, daily missions, run contracts, ship unlocks, a best-run ghost, weekly and
-daily ranked ladders, Facebook login and the same rewarded-ad flow as the
-desktop version.
+daily ranked ladders, Facebook login, a Gem Store and gem-priced revives that
+double after every use. The same systems are mirrored on desktop.
 
 ![Title screen](../desktop/orbit_title.png)
 
+![Gem Store](../desktop/orbit_gem_store.png)
+
 **Controls:** swipe up/down to change ring, tap to reverse. Keyboard: arrows or
 W/S, Space to reverse, `P` pause, `M` mute, `V` ship, `1/2/3` contract,
-`R` ranked, `L` leaderboard, `D` daily. On the leaderboard: `1/2/3` tabs,
-`F` connect Facebook, `R` refresh, `B` back.
+`R` ranked, `L` leaderboard, `D` daily, `C` shop, `G` Gem Store. On the
+leaderboard: `1/2/3` tabs, `F` connect Facebook, `R` refresh, `B` back.
 
 ## Platform support
 
@@ -49,7 +51,7 @@ The game has to be online over HTTPS before a phone can install it:
    - **iPhone (Safari):** Share -> *Add to Home Screen*
 3. It opens full-screen from its own icon and works offline.
 
-When you deploy an update, bump `CACHE` in `sw.js` (for example `v9` -> `v10`) so
+When you deploy an update, bump `CACHE` in `sw.js` (for example `v10` -> `v11`) so
 installed clients pick up the new files.
 
 ## Competitive mode / Facebook
@@ -72,6 +74,8 @@ The web build has a weekly ranked ladder, a daily ladder and a Friends tab.
 - **Onboarding:** contextual first-run tutorial with a guaranteed crystal.
 - **Biomes / meteors:** five star biomes, iron/ice/gold/volatile/splitter rocks.
 - **Crystal shop:** trails, ship skins and titles (cosmetic only).
+- **Gem Store:** four gem packs, a rewarded gem ad, and gem-priced revives that
+  double each time (5, 10, 20, 40 ...). Gems are separate from crystals.
 - **Settings:** colour-blind cues, reduced motion, low-FX, music and SFX toggles.
 - **Install:** PWA install prompt and Ranked/Daily/Board shortcuts.
 
@@ -88,6 +92,9 @@ window.ORBIT_CONFIG = {
   admobRewardedId: "ca-app-pub-XXXX/YYYY",
   admobTestMode: true,
   admobConsent: true,
+
+  // browser builds use a no-charge demo store; native builds use real IAP
+  gemStoreDemo: true,
 };
 ```
 
@@ -104,7 +111,7 @@ device attestation for prizes.
 Daily challenges and weekly ranks use UTC dates, so the seed is the same for
 players in every time zone.
 
-## 3. Publish to Google Play / the App Store (with real ads)
+## 3. Publish to Google Play / the App Store (with real ads and gem billing)
 
 Wrap the `web` folder with [Capacitor](https://capacitorjs.com). You need
 Node.js, plus Android Studio for Android or Xcode on a Mac for iOS. Run these
@@ -134,6 +141,34 @@ production ad unit IDs. Verify the plugin method names for your installed
 `@capacitor-community/admob` version, and add the iOS ATT prompt if you track
 users.
 
+Gem billing uses `cordova-plugin-purchase`. Create four **consumable** products
+in App Store Connect and the Play Console with these IDs (or change `GEM_PACKS`
+in `game.js`):
+
+| Product ID | Gems | Display price |
+|---|---:|---:|
+| `orbit_gems_80` | 80 | $0.99 |
+| `orbit_gems_240` | 240 | $2.99 |
+| `orbit_gems_650` | 650 | $6.99 |
+| `orbit_gems_1800` | 1800 | $14.99 |
+
+`createIapProvider()` selects `CdvIapProvider` when the plugin is present and
+otherwise uses the browser `DemoIapProvider`. The demo store is clearly marked
+and gives no real charge; set `gemStoreDemo: false` to disable it. For a
+production economy, validate store receipts on your server before granting gems
+and keep gem balances server-side.
+
+## Gems and continues
+
+- Gems are the premium revive currency. Crystals remain the earned soft currency
+  for shields, cosmetics and ship unlocks.
+- The first revive costs 5 gems. Every further revive in the same run doubles the
+  price: 5, 10, 20, 40, 80, 160, 320 (cap).
+- If gems are short, the game-over screen opens the Gem Store without losing the
+  run. Close it with **Back to run**.
+- Every five completed missions pays 10 gems; the Gem Store rewarded ad pays 5.
+- Ranked and daily runs still have no revives, ads or purchased advantages.
+
 ## Crystals
 
 Crystals are not just a counter:
@@ -150,8 +185,7 @@ Crystals are not just a counter:
 ## Progression systems
 
 - **Missions:** three date-seeded objectives per day. Progress is saved; rewards
-  are paid on the game-over screen; every five completions grants a continue
-  token.
+  are paid on the game-over screen; every five completions grants 10 gems.
 - **Ships:** unlocked with lifetime crystals (0 / 250 / 700 / 1500) and cycled
   from the title screen.
 - **Contracts:** `STANDARD`, `BLAZE` (more flares, more score) and `VOID`
@@ -159,8 +193,8 @@ Crystals are not just a counter:
 - **Daily challenge:** fair UTC-date seed, fixed loadout, one life, own ladder.
 - **Ranked weekly:** UTC-week seed, fixed loadout, one life, own ladder.
 - **Ghost:** best classic run is replayed in-game.
-- **Continue economy:** free first continue -> continue tokens -> rewarded ad,
-  with a four-ad session cap. Ranked/daily runs have no continues or ads.
+- **Continue economy:** gem revive at 5, then double each time; Gem Store and a
+  four-ad session cap. Ranked/daily runs have no continues or ads.
 - **Corona Surge:** every 5 levels, collect 3 cores before the timer expires.
 
 ## Realism pass
@@ -197,7 +231,7 @@ Crystals are not just a counter:
 npm test
 ```
 
-The 36-test suite covers reward accounting, save sanitising, missions, contracts,
-ship modifiers, daily determinism, continue tokens, ad caps, flares, boss surges,
+The 38-test suite covers reward accounting, save sanitising, missions, contracts,
+ship modifiers, daily determinism, gem continues, gem store, ad caps, flares, boss surges,
 ghosts, ranked loadouts, local leaderboards, challenge seeds, profile storage,
 AdMob reward-event ordering, onboarding, biomes, shop purchases and settings.

@@ -21,4 +21,10 @@ window.ORBIT_CONFIG = {
   admobRewardedId: "",
   admobTestMode: true,
   admobConsent: true,
+
+  // Gem purchases. A Capacitor build with cordova-plugin-purchase uses the
+  // real App Store / Play Store products listed in game.js (GEM_PACKS).
+  // Browsers fall back to a clearly-labelled demo store; set to false to
+  // disable browser purchases entirely.
+  gemStoreDemo: true,
 };

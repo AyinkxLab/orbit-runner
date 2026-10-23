@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
-  BIOMES, SHOP_ITEMS, dateKey, weekKey } = require("../game.js");
+  BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -93,6 +93,7 @@ test("save loader clamps corrupt values and fills new fields", () => {
   assert.equal(s.lifetime, 0);
   assert.deepEqual(s.ships, ["scout"]);
   assert.equal(s.stats.runs, 0);
+  assert.equal(s.gems, 10);
 
   global.localStorage = { getItem: () => "not json" };
   assert.equal(Save.load().best, 0);
@@ -100,6 +101,10 @@ test("save loader clamps corrupt values and fills new fields", () => {
   // pre-v3 save migration
   global.localStorage = { getItem: () => '{"best":3850,"bank":70,"muted":false}' };
   assert.equal(Save.load().lifetime, 385);
+
+  // old continue tokens become gems
+  global.localStorage = { getItem: () => '{"continueTokens":2}' };
+  assert.equal(Save.load().gems, 20);
   delete global.localStorage;
 });
 
@@ -160,7 +165,7 @@ test("shield absorbs a flare", () => {
   assert.equal(g.shield, false);
 });
 
-test("missions complete, pay out, and award tokens every five completions", () => {
+test("missions complete, pay out, and award gems every five completions", () => {
   const g = newGame();
   g.save.missions = [{ ...MISSION_POOL.find(m => m.id === "run_crystals"), progress: 0, completed: false }];
   g.crystalGain = 15;
@@ -170,11 +175,11 @@ test("missions complete, pay out, and award tokens every five completions", () =
   assert.ok(g.save.bank >= 30);
 
   g.save.missionsDone = 4;
-  g.save.continueTokens = 0;
+  g.save.gems = 0;
   g.save.missions = [{ ...MISSION_POOL.find(m => m.id === "run_level"), progress: 0, completed: false }];
   g.elapsed = 60; // level 5
   g.checkMissions();
-  assert.equal(g.save.continueTokens, 1);
+  assert.equal(g.save.gems, 10);
 });
 
 test("contract and ship modifiers are applied on start", () => {
@@ -198,32 +203,65 @@ test("daily challenge is deterministic for the same date", () => {
   assert.equal(dateKey(), dateKey());
 });
 
-test("continue token is used without an ad", () => {
+test("gems buy a continue and each revive doubles the price", () => {
   const g = newGame();
   diedWith(g, 5);
-  g.save.freeContinueUsed = true;
-  g.save.continueTokens = 1;
+  g.save.gems = 100;
+  assert.equal(g.continueCost(), 5);
+  assert.equal(g.requestAd("continue"), true);
+  assert.equal(g.state, "play");
+  assert.equal(g.save.gems, 95);
+  assert.equal(g.continues, 1);
+
+  g.die();
+  assert.equal(g.continueCost(), 10);
   g.requestAd("continue");
   assert.equal(g.state, "play");
-  assert.equal(g.save.continueTokens, 0);
-  assert.equal(g.ads.showing, false);
+  assert.equal(g.save.gems, 85);
+  assert.equal(g.continues, 2);
+
+  g.die();
+  assert.equal(g.continueCost(), 20);
+  g.continues = 10;
+  assert.equal(g.continueCost(), 320);
 });
 
-test("first continue is free without an ad", () => {
+test("insufficient gems opens the gem store instead of reviving", () => {
   const g = newGame();
   diedWith(g, 5);
-  g.save.freeContinueUsed = false;
-  g.save.continueTokens = 0;
+  g.save.gems = 2;
   g.requestAd("continue");
-  assert.equal(g.state, "play");
-  assert.equal(g.save.freeContinueUsed, true);
-  assert.equal(g.ads.showing, false);
+  assert.equal(g.state, "gems");
+  assert.equal(g.continueCost(), 5);
+  assert.match(g.message, /more gems/);
+});
+
+test("demo gem pack purchase credits the wallet once", async () => {
+  const g = newGame();
+  g.iap = new DemoIapProvider();
+  g.save.gems = 0;
+  await g.buyGemPack(GEM_PACKS[0]);
+  assert.equal(g.save.gems, GEM_PACKS[0].gems);
+  assert.equal(g.save.analytics.gemPurchases, 1);
+  assert.match(g.storeMessage, /Demo purchase/);
+});
+
+test("watching a gem ad grants gems and respects the session cap", () => {
+  const g = newGame();
+  g.save.gems = 0;
+  g.openGemStore("title");
+  g.watchGemAd();
+  assert.equal(g.ads.showing, true);
+  g.ads.t = g.ads.DURATION;
+  g.ads.handleTap(700, 20);
+  assert.equal(g.save.gems, 5);
+  assert.equal(g.state, "gems");
+  assert.equal(g.save.analytics.gemAds, 1);
 });
 
 test("ad session cap stops new rewarded ads", () => {
   const g = newGame();
   diedWith(g, 5);
-  g.save.freeContinueUsed = true;
   g.adsUsed = 4;
   g.requestAd("double");
   assert.equal(g.ads.showing, false);
