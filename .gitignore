@@ -1,4 +1,11 @@
 orbit_save.json
+server/data/scores.json
+server/data/scores.json.tmp
+server/data/orbit.db
+server/data/orbit.db-wal
+server/data/orbit.db-shm
+*.tmp
 __pycache__/
+*.pyc
 node_modules/
 .DS_Store

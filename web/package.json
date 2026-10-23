@@ -1,0 +1,10 @@
+{
+  "name": "orbit-runner-web",
+  "private": true,
+  "version": "4.2.0",
+  "description": "Orbit Runner – installable mobile web game",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "serve": "python -m http.server 8000"
+  }
+}

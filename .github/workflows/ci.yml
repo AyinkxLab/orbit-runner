@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Web tests
+        working-directory: web
+        run: npm test
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install desktop dependencies
+        run: pip install -r desktop/requirements.txt
+      - name: Desktop tests
+        run: python -m unittest discover -s desktop -p "test_*.py" -v
+      - name: Desktop headless selftest
+        run: python desktop/orbit_runner.py --selftest
+      - name: Server tests
+        run: python -m unittest discover -s server -p "test_*.py" -v

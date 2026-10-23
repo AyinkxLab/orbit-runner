@@ -1,8 +1,222 @@
 # Orbit Runner
 
-Arcade orbit-dodger with a "watch ad to continue" mechanic.
+Arcade orbit-dodger with a "watch ad to continue" mechanic, daily missions and
+meta-progression.
 
-- `web/` – installable mobile web app (PWA). See `web/README.md`.
-- `desktop/` – original Python/pygame version: `pip install pygame && python desktop/orbit_runner.py`
+![Title screen](desktop/orbit_title.png)
+
+![Gameplay](desktop/orbit_play.png)
+
+![Rewarded ad](desktop/orbit_ad.png)
+
+- `web/` - installable mobile web app (PWA). See `web/README.md`.
+- `desktop/` - Python/pygame version.
 
 **Play online:** https://ayinkx.github.io/orbit-runner/web/
+
+## Controls
+
+| Action | Desktop | Mobile |
+|---|---|---|
+| Outer ring | `Up` / `W` | swipe up |
+| Inner ring | `Down` / `S` | swipe down |
+| Reverse orbit | `Space` | tap |
+| Pause | `P` | `II` button / leave the tab |
+| Mute | `M` | `M` button |
+| Ship | `V` | `SHIP` button |
+| Contract | `1` / `2` / `3` | contract buttons |
+| Daily challenge | `D` | `DAILY CHALLENGE` button |
+| Quit | `Esc` | close the tab |
+
+## The loop
+
+- **Three rings, endless meteors, crystals and a combo multiplier.** Combo decays
+  after 6 seconds instead of resetting instantly when a crystal expires.
+  Near-misses and flare dodges build combo too.
+- **Power-ups:** shield (one hit), magnet (pulls crystals from neighbouring rings
+  for 8s), and time warp (halves meteor speed for 6s).
+- **Solar flares:** a ring is telegraphed for ~2.6s, then burns. Be elsewhere for
+  a bonus; staying costs a shield or a life.
+- **Corona Surge:** every 5 levels, collect 3 golden cores before the 14s timer
+  ends for a large score/crystal bonus.
+- **Run contracts:**
+  - `STANDARD` - classic rules
+  - `BLAZE` - flares every ~9s, +40% score
+  - `VOID` - meteors +25% faster, 2x crystals
+- **Ships unlocked by lifetime crystals:**
+  - `SCOUT` - balanced
+  - `WARDEN` (250) - starts with a shield, longer combo
+  - `DRIFTER` (700) - wider magnet, faster ring shifts
+  - `GAMBLER` (1500) - crystals worth 2x, but no starting shield
+- **Daily missions:** three rotating objectives with crystal rewards. Every five
+  completed missions grants a continue token (max 3).
+- **Daily challenge:** a deterministic seed for the local date, with its own best
+  score and a "new daily best" badge.
+- **Ghost:** your best classic run is replayed as a translucent ship while you
+  play, so you can race it.
+- **Continue economy:** first continue is free, then continue tokens, then a
+  rewarded ad. Ads are capped per session. Double-crystals is always an optional
+  rewarded ad.
+- **Juice:** hit-stop, screen flash, power-up trails, combo sound tiers, a subtle
+  procedural beat, and auto-pause when the window loses focus.
+
+### Realism pass
+
+- **Orbital motion:** inner rings orbit faster (Kepler-style), reversing has
+  angular inertia, and ring changes use a spring-damper radial move.
+- **Meteor physics:** falling rocks accelerate toward the star, curve with
+  angular momentum, rotate as irregular polygons, and use swept collision so
+  fast rocks cannot tunnel through the ship.
+- **Visuals:** layered parallax starfield, shooting stars, a ringed planet,
+  additive nebula clouds, corona prominences, glowing rings, aircraft liveries
+  with exhaust/banking, rock tails/craters, ship afterimages, magnet beams,
+  shockwaves, combo callouts and a vignette.
+- **UI:** glass panels, segmented combo/level meters, crystal and power-up chips,
+  a run-grade badge (`S` to `E`), tier badges (`ROOKIE` to `DIAMOND`), richer
+  leaderboard rows with rank medals/avatars, and a product-style game-over card.
+- **Audio:** layered bass/arp pads, noise bursts for impacts/flares/shields,
+  combo-tier gem sounds, and a level-scaled music pulse.
+- **Real rewarded ads:** a native AdMob provider for Capacitor builds with
+  consent, reward-event handling and preloading; browser builds keep the
+  simulated ad until an ad unit id is configured.
+
+The screenshots in `desktop/` are produced by `--selftest --shots`.
+
+## What crystals do
+
+Crystals are both the score engine and the meta-currency:
+
+1. **In a run:** each pickup gives `25 x combo` points, raises the combo up to
+   `x8`, and refreshes the combo timer. Near-misses and flare dodges also keep
+   the combo alive, so crystals are the safest way to build a big multiplier.
+2. **At the end of a run:** the crystals you collected are banked. Bank crystals
+   buy a starting shield on the title screen (25).
+3. **Lifetime crystals** (every crystal ever collected) unlock ships:
+   `WARDEN` at 250, `DRIFTER` at 700, `GAMBLER` at 1500.
+4. **Missions** ask for crystal counts and pay out bank crystals.
+5. In ranked/daily runs crystals still add score and count toward missions and
+   lifetime unlocks, but the loadout is fixed so nobody can buy an advantage.
+
+## Competitive mode
+
+The web version has an online ladder built for rivalry:
+
+- **Ranked Weekly** - fixed `SCOUT` + `STANDARD` loadout, deterministic weekly
+  seed, one life, no ads, no continues. Everyone plays the same run.
+- **Daily Challenge** - the same fair rules with a fresh seed every day.
+- **Leaderboards** - Weekly, Daily and Friends tabs, rank/total score, your row
+  highlighted, local fallback when offline.
+- **Facebook login** - public profile plus optional `user_friends`; the access
+  token is sent only with a score submission and is never stored in the browser
+  save.
+- **Challenge links** - `?ranked=2026-W43` and `?daily=2026-10-23` open the same
+  seed so friends can fight the exact same run. `SHARE CHALLENGE` uses the native
+  share sheet or clipboard.
+- **Weekly leagues** - 30-player divisions with top-5 promotion and bottom-5
+  relegation, shown as a fourth leaderboard tab.
+- **Rival ghost** - submit your best line, then race the current #1 ghost from
+  the leaderboard.
+- **Run tokens** - the server issues a one-use token when a ranked/daily run
+  starts; score submissions without a valid token are rejected.
+- **Server validation** - `server/orbit_server.py` verifies the Facebook token,
+  seed, fixed loadout, one-life rules, plausible stats and unique run ids before
+  accepting a score. Scores live in SQLite; the API supports pagination,
+  token-verified account deletion (`POST /api/delete`) and event logging.
+
+Configure `web/config.js` with your Facebook App ID and score-server URL, then
+follow [`server/README.md`](server/README.md). Without those values the game
+still runs offline with a personal local board.
+
+### Onboarding, style and retain
+
+- First-run tutorial with contextual prompts, a guaranteed first crystal and a
+  delayed first flare.
+- Biomes (`NEBULA`, `PULSAR`, `RED GIANT`, `VOID`, `ICE FIELD`) with distinct
+  visuals and speed/score/gem modifiers.
+- Meteor varieties: iron (double near-miss score), ice (slow), gold (drops
+  crystals), volatile (chain explosion) and splitter (splits on approach).
+- Crystal shop: trails, ship skins and titles. Cosmetic-only; no ranked
+  advantage.
+- Settings: colour-blind flare cues, reduced motion, low-FX mode, music and SFX.
+- Share result cards (PNG) and challenge links, plus PWA install prompt and
+  manifest shortcuts.
+- Local analytics counters plus server event logging for the run/board/install
+  funnel.
+
+### Honest limitation
+
+The server validates the shape of a run but does not replay the game simulation.
+A determined cheater can still forge a plausible score. For prizes or a serious
+ladder, record inputs and replay them server-side, or add signed device
+attestation.
+
+## Run it
+
+Desktop:
+
+```bash
+pip install -r desktop/requirements.txt
+python desktop/orbit_runner.py
+```
+
+Web:
+
+```bash
+cd web
+python -m http.server 8000
+```
+
+Open http://localhost:8000.
+
+## Tests
+
+```bash
+# Python: 20 tests covering accounting, save migration, missions, tokens,
+# contracts, ships, daily seed, flares, shields, boss surges and ghosts
+python -m unittest discover -s desktop -p "test_*.py" -v
+
+# Headless scripted playthrough (also regenerates screenshots with --shots)
+python desktop/orbit_runner.py --selftest
+python desktop/orbit_runner.py --selftest --shots
+
+# Web: 36 Node tests for gameplay, missions, ranked mode, boards, AdMob,
+# biomes, tutorials, shop and settings
+cd web && npm test
+
+# Score server: 21 tests for seeds, validation, SQLite ranking, pagination,
+# deletion, duplicates, rate limits, leagues, ghosts, tokens and events
+python -m unittest discover -s server -p "test_*.py" -v
+```
+
+## Layout
+
+| Path | Purpose |
+|---|---|
+| `desktop/orbit_runner.py` | Pygame game, ad interface, selftest |
+| `desktop/test_orbit_runner.py` | Headless Python regression tests |
+| `desktop/orbit_*.png` | Screenshots produced by `--selftest --shots` |
+| `web/game.js` | Canvas game, ad interface, ranked/leaderboard client |
+| `web/config.js` | Facebook App ID, score-server URL |
+| `web/test/game.test.js` | Node test suite |
+| `web/index.html` | Page shell, safe-area layout |
+| `web/sw.js` | Versioned offline cache / update handling |
+| `web/manifest.json` | Install metadata |
+| `server/orbit_server.py` | Score API, Facebook verification, leagues, tokens, events |
+| `server/test_server.py` | Server unit tests |
+| `server/README.md` | Facebook app + deployment guide |
+| `server/Dockerfile` | Container image for the score API |
+| `docker-compose.yml` | Local/production service definition |
+| `.github/workflows/ci.yml` | Web, desktop and server test pipeline |
+
+## Notes
+
+- The service worker uses a versioned cache and network-first navigation. Bump
+  `CACHE` in `web/sw.js` when deploying a new asset set.
+- The `AdMobProvider` sketch is a starting point, not a production integration.
+  Verify the API against your installed `@capacitor-community/admob` version,
+  initialize the SDK, grant rewards from the SDK's reward event, and add the
+  required consent/ATT flow.
+- The online ladder, leagues, rival ghosts, cosmetics shop, settings, share cards
+  and install prompt are in the web/PWA build. The desktop build keeps gameplay
+  and visual parity (biomes, meteor varieties, aircraft, effects) but is offline.
+- There is no license file in the repository yet; pick one before publishing.

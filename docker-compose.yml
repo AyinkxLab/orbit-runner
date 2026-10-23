@@ -1,0 +1,16 @@
+services:
+  orbit-scores:
+    build: ./server
+    ports:
+      - "8080:8080"
+    environment:
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID:-}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET:-}
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-*}
+      RUN_TOKENS: ${RUN_TOKENS:-1}
+    volumes:
+      - orbit-data:/data
+    restart: unless-stopped
+
+volumes:
+  orbit-data:

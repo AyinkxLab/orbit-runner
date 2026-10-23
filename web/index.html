@@ -2,23 +2,33 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#060610">
+  <meta name="description" content="Orbit Runner – a one-button arcade dodger. Dodge meteors, grab crystals, survive solar flares.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Orbit Runner">
   <title>Orbit Runner</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-192.png">
   <style>
     html, body { margin: 0; height: 100%; background: #000; overflow: hidden;
-      touch-action: none; -webkit-user-select: none; user-select: none; }
-    body { display: flex; align-items: center; justify-content: center; }
-    canvas { display: block; }
+      touch-action: none; overscroll-behavior: none;
+      -webkit-user-select: none; user-select: none; }
+    #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      box-sizing: border-box;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+    canvas { display: block; touch-action: none; -webkit-touch-callout: none; cursor: pointer; }
+    noscript { color: #c8c8dc; font: 18px ui-monospace, monospace; text-align: center; padding: 2rem; }
   </style>
 </head>
 <body>
-  <canvas id="game"></canvas>
+  <div id="stage">
+    <canvas id="game" aria-label="Orbit Runner game"></canvas>
+  </div>
+  <noscript>Orbit Runner needs JavaScript enabled.</noscript>
+  <script src="config.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
