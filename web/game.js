@@ -158,6 +158,12 @@ function difficultyProfile(level, { tutorial = false, competitive = false } = {}
     doubleSpawnChance: beginnerAssist ? 0 : Math.min(0.5, safeLevel * 0.06),
   };
 }
+
+function flareWarningText(secondsRemaining, ringIndex) {
+  const ring = RING_NAMES[ringIndex];
+  if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
+  return `FLARE IN ${secondsRemaining.toFixed(1)}s — ${ring.toUpperCase()} RING`;
+}
 function segDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx * dx + dy * dy;
@@ -2543,19 +2549,18 @@ class Game {
 
     if (this.flareT > 0 && this.flareRing >= 0) {
       c.globalAlpha = 0.45 + 0.45 * Math.sin(this.time * 14);
-      if (this.save.settings.colorblind) {
-        c.save();
-        if (c.setLineDash) c.setLineDash([14, 10]);
-        circle(c, CX + ox, CY + oy, RINGS[this.flareRing], "#ff5a2a", 8);
-        if (c.setLineDash) c.setLineDash([]);
-        c.restore();
-        const ax = CX + Math.cos(-Math.PI / 2) * RINGS[this.flareRing] + ox;
-        const ay = CY + Math.sin(-Math.PI / 2) * RINGS[this.flareRing] + oy;
-        circle(c, ax, ay, 12, "#ff5a2a");
-        text(c, "!", ax, ay + 1, 18, "#0a1020", true);
-      } else {
-        circle(c, CX + ox, CY + oy, RINGS[this.flareRing], "#ff5a2a", 7);
-      }
+      // Shape, marker and text all communicate the hazard; color is never the
+      // only cue, so the warning remains readable with color cues disabled.
+      c.save();
+      if (c.setLineDash) c.setLineDash(this.save.settings.colorblind ? [14, 10] : [8, 12]);
+      circle(c, CX + ox, CY + oy, RINGS[this.flareRing], "#ff5a2a", this.save.settings.colorblind ? 8 : 6);
+      if (c.setLineDash) c.setLineDash([]);
+      c.restore();
+      const ax = CX + ox;
+      const ay = CY - RINGS[this.flareRing] + oy;
+      circle(c, ax, ay, 14, "#ff5a2a");
+      text(c, "!", ax, ay + 1, 18, "#0a1020", true);
+      text(c, flareWarningText(this.flareT, this.flareRing), CX + ox, ay - 24, 17, "#ffe4c2", true);
       c.globalAlpha = 1;
     }
     if (this.boss) {
@@ -3425,5 +3430,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, W, H };
 else window.addEventListener("load", boot);
