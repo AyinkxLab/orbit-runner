@@ -103,6 +103,8 @@ with the tutorial and does not change daily or ranked challenge rules.
   shared schema makes campaign progress portable for future import/export tooling but
   does not automatically sync files between devices.
 
+- The web galaxy map uses the existing sector positions to draw connected routes, distinguish locked and charted systems, and show the selected sector's objective without duplicating campaign progression or save data.
+
 ### Realism pass
 
 - **Orbital motion:** inner rings orbit faster (Kepler-style), reversing has
