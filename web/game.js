@@ -185,6 +185,11 @@ function comboMilestoneText(combo) {
 function shouldRenderScreenFlash(settings = {}) {
   return settings.reducedMotion !== true;
 }
+function campaignPauseHint(sectorId) {
+  const sector = CAMPAIGN_SECTORS.find(item => item.id === sectorId);
+  return sector ? `${sector.name} — ${sector.objective}` : "";
+}
+
 function segDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx * dx + dy * dy;
@@ -3348,6 +3353,8 @@ class Game {
       W / 2, 380, 18, "#9696aa");
     text(c, `${this.mode === "daily" ? "DAILY" : this.mode === "ranked" ? `RANKED ${this.rankedWeek}` : this.contract.name} - ${this.ship.name}`,
       W / 2, 414, 18, "#78c8ff");
+    const campaignHint = campaignPauseHint(this.currentCampaignSector);
+    if (campaignHint) text(c, campaignHint, W / 2, 446, 15, "#ffd783");
     this.button(c, "Resume", 470, "#78ff8c", () => this.togglePause(), 96);
     this.button(c, "Restart", 598, "#c8c8dc", () => this.beginMode(this.mode), 96);
     this.button(c, "Title", 726, "#c8c8dc", () => this.goTitle(), 96);
@@ -3466,5 +3473,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, campaignPauseHint, W, H };
 else window.addEventListener("load", boot);
