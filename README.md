@@ -88,6 +88,12 @@ The first classic tutorial run uses a gentler meteor cadence and speed to help n
 players learn ring movement, reversing, crystals and flare cues. This assist ends
 with the tutorial and does not change daily or ranked challenge rules.
 
+### Campaign pause guidance
+
+The pause screen names the active campaign sector and repeats its current objective,
+so players can resume with the next milestone in mind. Standard, daily and ranked
+runs keep their existing pause layout and rules.
+
 ### Living-universe campaign
 
 - The web campaign includes a four-sector star map, story archive, optional planetary
