@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign } = require("../game.js");
+  sanitizeCampaign, difficultyProfile } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -121,6 +121,25 @@ test("rewarded ad grants nothing when closed early and rewards when watched", ()
   ads.t = ads.DURATION;
   ads.handleTap(700, 20);
   assert.equal(rewards, 1);
+});
+
+test("first-run pacing eases tutorial meteor pressure without changing competitive rules", () => {
+  const tutorial = difficultyProfile(2, { tutorial: true, competitive: false });
+  assert.equal(tutorial.level, 2);
+  assert.equal(tutorial.spawnIntervalMultiplier, 1.22);
+  assert.equal(tutorial.meteorSpeedMultiplier, 0.88);
+  assert.equal(tutorial.doubleSpawnChance, 0);
+
+  const classic = difficultyProfile(2);
+  const ranked = difficultyProfile(2, { tutorial: true, competitive: true });
+  assert.equal(classic.spawnIntervalMultiplier, 1);
+  assert.equal(classic.meteorSpeedMultiplier, 1);
+  assert.equal(ranked.spawnIntervalMultiplier, 1);
+  assert.equal(ranked.meteorSpeedMultiplier, 1);
+  assert.equal(ranked.doubleSpawnChance, 0.12);
+
+  assert.equal(difficultyProfile(99).level, 14);
+  assert.equal(difficultyProfile(-4).level, 1);
 });
 
 test("combo decays after the timer", () => {
