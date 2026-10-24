@@ -154,11 +154,41 @@ function segDist(px, py, x1, y1, x2, y2) {
 }
 
 // ------------------------------------------------------------ persistence --
+// Campaign navigation: destinations reuse existing biome IDs and classic-run rules.
+const CAMPAIGN_SECTORS = [
+  { id: "sol-frontier", name: "SOL FRONTIER", subtitle: "THE FIRST BEACON", biome: "nebula",
+    description: "A quiet frontier. An ancient beacon has begun transmitting again.",
+    objective: "Complete a run here to chart the frontier.", unlockAfter: null, position: [0.16, 0.22] },
+  { id: "ember-reach", name: "EMBER REACH", subtitle: "SIGNAL IN THE FIRE", biome: "ember",
+    description: "A red giant illuminates the last known route of a missing expedition.",
+    objective: "Complete Sol Frontier to open this route.", unlockAfter: "sol-frontier", position: [0.39, 0.36] },
+  { id: "silent-expanse", name: "THE SILENT EXPANSE", subtitle: "FROZEN ECHOES", biome: "ice",
+    description: "Frozen stations drift beneath an atmosphere of blue ice and static.",
+    objective: "Complete Ember Reach to open this route.", unlockAfter: "ember-reach", position: [0.64, 0.19] },
+  { id: "void-crown", name: "THE VOID CROWN", subtitle: "EDGE OF THE UNKNOWN", biome: "void",
+    description: "A dark anomaly bends starlight around the source of the signal.",
+    objective: "Complete the Silent Expanse to open this route.", unlockAfter: "silent-expanse", position: [0.83, 0.39] },
+];
+const freshCampaign = () => ({ version: 1, completed: [], selected: "sol-frontier" });
+function sanitizeCampaign(raw) {
+  const out = freshCampaign();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const requested = new Set(Array.isArray(raw.completed) ? raw.completed.filter(id =>
+    typeof id === "string" && CAMPAIGN_SECTORS.some(s => s.id === id)) : []);
+  for (const sector of CAMPAIGN_SECTORS) {
+    if (requested.has(sector.id) && (!sector.unlockAfter || out.completed.includes(sector.unlockAfter)))
+      out.completed.push(sector.id);
+  }
+  if (CAMPAIGN_SECTORS.some(s => s.id === raw.selected)) out.selected = raw.selected;
+  return out;
+}
+
 const Save = {
   key: "orbit_runner_save",
   fresh() {
     return {
       best: 0, bank: 0, gems: 10, muted: false, lifetime: 0,
+      campaign: freshCampaign(),
       ships: ["scout"], ship: "scout", contract: "standard",
       missions: [], missionDay: "", missionsDone: 0,
       daily: { date: "", best: 0 }, ranked: { week: "", best: 0 },
@@ -180,6 +210,7 @@ const Save = {
     try { raw = JSON.parse(localStorage.getItem(this.key)); } catch (e) { /* unavailable/corrupt */ }
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) raw = {};
     const out = this.fresh();
+    out.campaign = sanitizeCampaign(raw.campaign);
     const num = v => (typeof v === "number" && Number.isFinite(v) && v >= 0) ? Math.floor(v) : 0;
 
     out.best = num(raw.best); out.bank = num(raw.bank); out.muted = raw.muted === true;
@@ -893,6 +924,9 @@ class Game {
     this.ads = ads; this.iap = iap || new DemoIapProvider();
     this.save = Save.load(); Sfx.muted = !!this.save.muted;
     this.state = "title"; this.time = 0;
+    this.campaignSelectedSector = this.save.campaign.selected;
+    this.currentCampaignSector = null;
+    this.campaignMessage = "";
     this.buyShield = false; this.message = ""; this.buttons = []; this.paused = false;
     this.gemStoreReturn = "title"; this.storeMessage = ""; this.storeBusy = false;
     this.mode = "classic"; this.contract = CONTRACTS[0]; this.ship = SHIPS[0];
@@ -937,6 +971,7 @@ class Game {
     });
   }
   goTitle() {
+    this.currentCampaignSector = null;
     this.reset();
     this.ghost = this.save.ghost;
     this.rivalGhost = null;
@@ -944,6 +979,7 @@ class Game {
     this.paused = false;
   }
   start(mode = "classic") {
+    this.currentCampaignSector = null;
     this.ensureMissions();
     this.rotateCompletedMissions();
     this.refreshUnlocks();
@@ -1241,6 +1277,7 @@ class Game {
     this.checkMissions();
     this.refreshUnlocks();
     this.save.bank = Math.max(0, this.save.bank);
+    this.completeCampaignSector();
     Save.write(this.save);
     this.state = "over"; this.paused = false; this.hitStop = 0;
     if (this.ranked) {
@@ -1671,6 +1708,54 @@ class Game {
   }
   toggleShield() { if (this.save.bank >= SHIELD_COST) { this.buyShield = !this.buyShield; Sfx.play("pause"); } }
 
+  // ---- campaign navigation ---------------------------------------------
+  campaignSector(id) { return CAMPAIGN_SECTORS.find(s => s.id === id) || null; }
+  campaignUnlocked(sectorOrId) {
+    const sector = typeof sectorOrId === "string" ? this.campaignSector(sectorOrId) : sectorOrId;
+    return !!sector && (!sector.unlockAfter || this.save.campaign.completed.includes(sector.unlockAfter));
+  }
+  openCampaignMap() {
+    this.campaignSelectedSector = this.save.campaign.selected || CAMPAIGN_SECTORS[0].id;
+    this.campaignMessage = "";
+    this.state = "campaign";
+    this.paused = false;
+  }
+  selectCampaignSector(id) {
+    const sector = this.campaignSector(id);
+    if (!sector) return false;
+    this.campaignSelectedSector = id;
+    this.save.campaign.selected = id;
+    this.campaignMessage = this.campaignUnlocked(sector) ? "" : "ROUTE LOCKED — COMPLETE THE PREVIOUS SECTOR";
+    Save.write(this.save);
+    return true;
+  }
+  launchCampaignSector(id = this.campaignSelectedSector) {
+    const sector = this.campaignSector(id);
+    if (!this.campaignUnlocked(sector)) {
+      this.campaignMessage = "ROUTE LOCKED — COMPLETE THE PREVIOUS SECTOR";
+      return false;
+    }
+    this.selectCampaignSector(sector.id);
+    this.start("classic");
+    this.currentCampaignSector = sector.id;
+    const biome = BIOMES.find(b => b.id === sector.biome);
+    if (biome) { this.biome = biome; this.applyLoadout(); }
+    this.save.campaign.selected = sector.id;
+    Save.write(this.save);
+    return true;
+  }
+  completeCampaignSector() {
+    if (!this.currentCampaignSector) return false;
+    const id = this.currentCampaignSector;
+    if (!this.save.campaign.completed.includes(id)) this.save.campaign.completed.push(id);
+    this.currentCampaignSector = null;
+    const index = CAMPAIGN_SECTORS.findIndex(s => s.id === id);
+    const next = CAMPAIGN_SECTORS[index + 1];
+    this.campaignMessage = next ? `ROUTE DISCOVERED: ${next.name}` : "SECTOR CHARTED — CAMPAIGN FRONTIER COMPLETE";
+    Save.write(this.save);
+    return true;
+  }
+
   // ---- input ------------------------------------------------------------
   action(a) {
     if (this.paused) return;
@@ -1686,6 +1771,18 @@ class Game {
     if (this.ads.showing) return this.ads.handleKey(k);
     const kk = k.length === 1 ? k.toLowerCase() : k;
     if (kk === "m") { this.toggleMute(); return; }
+    if (this.state === "campaign") {
+      if (kk === "escape" || kk === "b" || kk === "q") this.goTitle();
+      else if (kk === "arrowup" || kk === "w") {
+        const i = CAMPAIGN_SECTORS.findIndex(s => s.id === this.campaignSelectedSector);
+        this.selectCampaignSector(CAMPAIGN_SECTORS[(i + CAMPAIGN_SECTORS.length - 1) % CAMPAIGN_SECTORS.length].id);
+      } else if (kk === "arrowdown" || kk === "s") {
+        const i = CAMPAIGN_SECTORS.findIndex(s => s.id === this.campaignSelectedSector);
+        this.selectCampaignSector(CAMPAIGN_SECTORS[(i + 1) % CAMPAIGN_SECTORS.length].id);
+      } else if (kk === "enter" || kk === " ") this.launchCampaignSector();
+      else if (kk >= "1" && kk <= "4") this.selectCampaignSector(CAMPAIGN_SECTORS[Number(kk) - 1].id);
+      return;
+    }
     if (this.state === "board") {
       if (kk === "escape" || kk === "b" || kk === "q") this.goTitle();
       else if (kk === "r") this.refreshBoard();
@@ -1755,7 +1852,7 @@ class Game {
   tap(x, y) {
     if (this.ads.showing) return this.ads.handleTap(x, y);
     for (const b of this.buttons) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b.fn();
-    if (this.paused || this.state === "board" || this.state === "shop" ||
+    if (this.paused || this.state === "campaign" || this.state === "board" || this.state === "shop" ||
         this.state === "settings" || this.state === "gems") return;
     if (this.state !== "over") this.action("tap");
   }
@@ -2262,6 +2359,7 @@ class Game {
 
   draw(c) {
     this.buttons = [];
+    if (this.state === "campaign") return this.drawCampaignMap(c);
     if (this.state === "board") return this.drawBoard(c);
     if (this.state === "shop") return this.drawShop(c);
     if (this.state === "settings") return this.drawSettings(c);
@@ -2575,6 +2673,62 @@ class Game {
     this.save.missions.forEach((m, i) => this.missionLine(c, m, y + i * 42, 20));
   }
 
+  drawCampaignMap(c) {
+    c.fillStyle = "rgba(2, 5, 16, 0.97)"; c.fillRect(0, 0, W, H);
+    for (let i = 0; i < 70; i++) {
+      const x = (i * 137 + 41) % W, y = (i * 211 + 19) % H;
+      circle(c, x, y, i % 9 === 0 ? 2 : 1, i % 3 === 0 ? "rgba(120,200,255,0.6)" : "rgba(210,225,255,0.38)");
+    }
+    text(c, "THE LOST SYSTEMS", W / 2, 68, 34, "#d9edff", true);
+    text(c, "SECTOR NAVIGATION  /  SELECT A DESTINATION", W / 2, 108, 14, "#7fa7c8", true);
+    c.strokeStyle = "rgba(95, 166, 220, 0.45)"; c.lineWidth = 2; c.beginPath();
+    CAMPAIGN_SECTORS.forEach((s, i) => {
+      const x = 86 + s.position[0] * (W - 172), y = 155 + i;
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
+    });
+    c.stroke();
+    CAMPAIGN_SECTORS.forEach((sector, i) => {
+      const x = 38, y = 150 + i * 210, w = W - 76, h = 178;
+      const selected = sector.id === this.campaignSelectedSector;
+      const unlocked = this.campaignUnlocked(sector);
+      const completed = this.save.campaign.completed.includes(sector.id);
+      panel(c, x, y, w, h,
+        selected ? "rgba(16, 36, 58, 0.94)" : "rgba(7, 15, 31, 0.88)",
+        selected ? "rgba(120, 220, 255, 0.9)" : "rgba(120, 170, 210, 0.24)", 16);
+      const px = 104, py = y + 68, pr = 27;
+      if (typeof c.createRadialGradient === "function") {
+        const glow = c.createRadialGradient(px, py, 2, px, py, 47);
+        glow.addColorStop(0, sector.biome === "ember" ? "rgba(255,125,70,0.9)" :
+          sector.biome === "ice" ? "rgba(110,225,255,0.9)" :
+          sector.biome === "void" ? "rgba(160,120,255,0.9)" : "rgba(100,180,255,0.9)");
+        glow.addColorStop(1, "rgba(0,0,0,0)");
+        c.fillStyle = glow; c.fillRect(px - 48, py - 48, 96, 96);
+      }
+      const planetCol = sector.biome === "ember" ? "#ff874f" : sector.biome === "ice" ? "#8deaff" :
+        sector.biome === "void" ? "#a18bff" : "#78c8ff";
+      circle(c, px, py, pr, planetCol);
+      circle(c, px - 8, py - 8, 10, "rgba(255,255,255,0.28)");
+      c.strokeStyle = "rgba(210,230,255,0.55)"; c.lineWidth = 2; c.beginPath();
+      c.ellipse(px, py, pr + 13, 8, -0.24, 0, TAU); c.stroke();
+      const titleCol = unlocked ? "#e6f3ff" : "#718096";
+      text(c, `${i + 1}. ${sector.name}`, 153, y + 36, 20, titleCol, true, "left");
+      text(c, sector.subtitle, 153, y + 62, 12, unlocked ? "#80d8ff" : "#65738a", true, "left");
+      text(c, sector.description, 153, y + 94, 13, "#b8c6d9", false, "left");
+      text(c, completed ? "SECTOR CHARTED" : unlocked ? "ROUTE AVAILABLE" : "ROUTE LOCKED",
+        153, y + 126, 13, completed ? "#8dffce" : unlocked ? "#80d8ff" : "#768096", true, "left");
+      text(c, sector.biome.toUpperCase() + " ENVIRONMENT", 153, y + 151, 11, "#778aa4", false, "left");
+      this.buttons.push({ x, y, w, h, fn: () => this.selectCampaignSector(sector.id) });
+    });
+    const selected = this.campaignSector(this.campaignSelectedSector) || CAMPAIGN_SECTORS[0];
+    const unlocked = this.campaignUnlocked(selected);
+    this.smallButton(c, unlocked ? "LAUNCH SELECTED SECTOR" : "SECTOR LOCKED",
+      52, 1005, W - 104, 64, unlocked ? "#ffd783" : "#6e778b",
+      () => this.launchCampaignSector(selected.id));
+    this.smallButton(c, "BACK TO TITLE", 52, 1087, W - 104, 56, "#83bfe9", () => this.goTitle());
+    text(c, this.campaignMessage || selected.objective, W / 2, 1181, 13, "#9bb6ce", false);
+    text(c, "UP / DOWN SELECT  •  ENTER LAUNCH  •  ESC BACK", W / 2, 1220, 12, "#607994");
+  }
+
   drawTitle(c) {
     c.save();
     c.shadowColor = "#ff8a3c"; c.shadowBlur = 28;
@@ -2609,7 +2763,7 @@ class Game {
       this.smallButton(c, ct.name, x, 636, 190, 52, this.save.contract === ct.id ? "#ffd45a" : "#55557a",
         () => this.selectContract(ct.id));
     });
-    text(c, "Each contract is a different risk/reward profile.", 58, 722, 14, "#828296", false, "left");
+    this.smallButton(c, "OPEN STAR MAP  /  THE LOST SYSTEMS", 80, 700, 560, 44, "#78c8ff", () => this.openCampaignMap());
 
     // actions
     const challengeWeek = this.challenge && this.challenge.mode === "ranked" ? this.challenge.week : null;
@@ -2915,7 +3069,7 @@ function boot() {
 
 if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
-    DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
+    CAMPAIGN_SECTORS, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
     dateKey, weekKey, mulberry32, W, H };
 else window.addEventListener("load", boot);
