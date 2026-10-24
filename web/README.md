@@ -196,6 +196,12 @@ Crystals are not just a counter:
 - Ranked/daily runs still earn score, missions and lifetime progress, but the
   fixed loadout means crystals cannot buy a leaderboard advantage.
 
+## Hazard readability
+
+Solar-flare warnings now combine a dashed target-ring outline, an explicit target
+marker, and a high-contrast countdown naming the affected ring. The shape and text
+remain visible when the optional color-cue setting is off.
+
 ## Core gameplay and first-run pacing
 
 - The first classic run eases players into the controls with a slightly slower meteor

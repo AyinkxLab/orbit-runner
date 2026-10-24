@@ -65,6 +65,11 @@ meta-progression.
 - **Juice:** hit-stop, screen flash, power-up trails, combo sound tiers, a subtle
   procedural beat, and auto-pause when the window loses focus.
 
+### Hazard readability
+
+Solar-flare telegraphs identify both the target ring and remaining time with
+shape-based and text cues, so players do not need to rely on color alone.
+
 ### Core gameplay first-run pacing
 
 The first classic tutorial run uses a gentler meteor cadence and speed to help new
