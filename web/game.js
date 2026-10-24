@@ -173,6 +173,15 @@ function bossWarningText(secondsRemaining, cores, need = 3) {
     ? `HURRY — ${remaining} CORE${remaining === 1 ? "" : "S"} LEFT — ${time}s`
     : `COLLECT CORES ${Math.min(Math.max(0, Math.floor(cores)), Math.floor(need))}/${Math.floor(need)} — ${time}s`;
 }
+function comboMilestoneText(combo) {
+  if (!Number.isFinite(combo)) return "";
+  const tier = Math.floor(combo);
+  if (tier === 2) return "x2 WARM STREAK";
+  if (tier === 4) return "x4 HOT STREAK";
+  if (tier === 6) return "x6 BLAZING";
+  if (tier === MAX_COMBO) return "OVERDRIVE";
+  return "";
+}
 function segDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx * dx + dy * dy;
@@ -1299,12 +1308,18 @@ class Game {
     this.combo = Math.min(MAX_COMBO, this.combo + amount);
     this.comboT = this.comboTime;
     this.maxCombo = Math.max(this.maxCombo, this.combo);
+    if (before < 2 && this.combo >= 2) {
+      this.float(CX, CY - 40, comboMilestoneText(2), "#c8c8dc");
+    }
     if (before < 4 && this.combo >= 4) {
-      this.float(CX, CY - 60, "x4  HOT STREAK", "#ffb43c");
+      this.float(CX, CY - 60, comboMilestoneText(4), "#ffb43c");
       this.addShock(CX, CY, "#ffb43c", 120, 0.4);
     }
+    if (before < 6 && this.combo >= 6) {
+      this.float(CX, CY - 45, comboMilestoneText(6), "#ff8a4a");
+    }
     if (before < MAX_COMBO && this.combo >= MAX_COMBO) {
-      this.float(CX, CY - 30, "OVERDRIVE", "#ffe678");
+      this.float(CX, CY - 30, comboMilestoneText(MAX_COMBO), "#ffe678");
       this.addShock(CX, CY, "#ffe678", 170, 0.55);
       Sfx.play("reward");
     }
@@ -3448,5 +3463,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, W, H };
 else window.addEventListener("load", boot);
