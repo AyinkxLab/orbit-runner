@@ -196,7 +196,7 @@ still runs offline with a personal local board.
   crystals), volatile (chain explosion) and splitter (splits on approach).
 - Crystal shop: trails, ship skins and titles. Cosmetic-only; no ranked
   advantage.
-- Settings: colour-blind flare cues, reduced motion (including no full-screen flash overlays), low-FX mode, music and SFX.
+- Settings: colour-blind flare cues, reduced motion (no screen shake, full-screen flash overlays, or impact hit-stop pauses), low-FX mode, music and SFX.
 - Share result cards (PNG) and challenge links, plus PWA install prompt and
   manifest shortcuts.
 - Local analytics counters plus server event logging for the run/board/install
