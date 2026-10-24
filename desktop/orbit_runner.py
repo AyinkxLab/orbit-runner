@@ -835,6 +835,7 @@ class Game:
 
     def start_run(self, mode="classic", campaign_sector=None):
         if mode == "campaign":
+            campaign_sector = campaign_sector or self.current_campaign_sector or self.save["campaign"]["selected"]
             sector = next((item for item in CAMPAIGN_SECTORS if item["id"] == campaign_sector), None)
             if not sector or (sector["unlockAfter"] and sector["unlockAfter"] not in self.save["campaign"]["completed"]):
                 self.message = "Chart the previous sector first."
