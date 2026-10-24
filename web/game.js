@@ -418,8 +418,11 @@ const Leaderboard = {
         scope, week: opts.week || weekKey(), date: opts.date || dateKey(),
         limit: String(CONFIG.leaderboardSize || 20),
       });
-      if ((scope === "friends" || scope === "league") && Social.token) q.set("accessToken", Social.token);
-      const res = await fetch(`${this.apiBase()}/api/leaderboard?${q.toString()}`);
+      const headers = {};
+      if ((scope === "friends" || scope === "league") && Social.token) {
+        headers.Authorization = `Bearer ${Social.token}`;
+      }
+      const res = await fetch(`${this.apiBase()}/api/leaderboard?${q.toString()}`, { headers });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Server error ${res.status}`);
       return { source: "remote", ...data };
