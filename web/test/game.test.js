@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -678,6 +678,12 @@ test("reduced motion disables full-screen flash overlays without changing defaul
   assert.equal(shouldRenderScreenFlash({ reducedMotion: false }), true);
   assert.equal(shouldRenderScreenFlash({ lowFx: true }), true);
   assert.equal(shouldRenderScreenFlash(), true);
+});
+
+test("reduced motion skips impact hit-stop while default settings preserve it", () => {
+  assert.equal(shouldApplyHitStop({ reducedMotion: true }), false);
+  assert.equal(shouldApplyHitStop({ reducedMotion: false }), true);
+  assert.equal(shouldApplyHitStop(), true);
 });
 
 test("combo milestone copy names the streak tiers clearly and rejects invalid values", () => {
