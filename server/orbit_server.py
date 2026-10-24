@@ -664,7 +664,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         # Older clients may still send a token in the query string. Redact it
         # before logging request lines so legacy traffic cannot leak credentials.
-        message = re.sub(r"(?i)(accessToken=)[^&\\s]*", r"\\1[REDACTED]", fmt % args)
+        message = re.sub(r"(?i)(accessToken=)[^&\s]*", r"\1[REDACTED]", fmt % args)
         print("%s - %s" % (self.address_string(), message))
 
     def _cors(self):
