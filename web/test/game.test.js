@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -409,6 +409,24 @@ test("volatile meteors explode and clear nearby rocks", () => {
   g.update(0.01);
   assert.equal(bomb.dead, true);
   assert.equal(other.dead, true);
+});
+
+test("achievement progress derives badges from existing stats and campaign saves", () => {
+  const empty = achievementProgress({});
+  assert.ok(empty.length >= 8);
+  assert.equal(empty.find(item => item.id === "first-flight").unlocked, false);
+  const progress = achievementProgress({
+    stats: { runs: 1, flares: 10, near: 25, bosses: 3 },
+    lifetime: 500,
+    campaign: {
+      completed: ["sol-frontier", "ember-reach", "silent-expanse", "void-crown"],
+      discoveries: ["beacon-awake", "ember-expedition", "silent-echo", "void-origin"],
+      exploration: { "sol-frontier": ["a", "b", "c"], "ember-reach": ["d", "e", "f"] },
+    },
+    cosmetics: { owned: ["1", "2", "3", "4", "5", "6", "7", "8"] },
+  });
+  assert.ok(progress.every(item => item.unlocked));
+  assert.equal(achievementProgress({ stats: { runs: -10 } })[0].progress, 0);
 });
 
 test("biomes drive speed, score and crystal rates", () => {
