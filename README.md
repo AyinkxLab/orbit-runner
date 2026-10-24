@@ -148,6 +148,7 @@ runs keep their existing pause layout and rules.
   shared schema makes campaign progress portable for future import/export tooling but
   does not automatically sync files between devices.
 
+- The story archive presents the existing sector discoveries as one signal chain, with a recovery meter and the next unrecovered lead. It reuses the campaign discovery IDs and does not add a separate save format.
 - The web galaxy map uses the existing sector positions to draw connected routes, distinguish locked and charted systems, and show the selected sector's objective without duplicating campaign progression or save data.
 
 ### Realism pass

@@ -237,6 +237,22 @@ const STORY_ENTRIES = [
   { id: "void-origin", sectorId: "void-crown", title: "The Signal's Origin", classification: "FRONTIER ARCHIVE",
     teaser: "The source lies beyond the mapped systems.", body: "At the edge of the Void Crown, the signal resolves into a navigational pattern. The four sectors are not separate destinations; together they form a route. The beacon was never a warning. It was a map." },
 ];
+
+// Summarize the existing discovery chain without adding a second save/progression system.
+function storySignalState(discoveries = []) {
+  const known = new Set(Array.isArray(discoveries) ? discoveries : []);
+  const recovered = STORY_ENTRIES.filter(entry => known.has(entry.id));
+  const next = STORY_ENTRIES.find(entry => !known.has(entry.id)) || null;
+  return {
+    recoveredCount: recovered.length,
+    total: STORY_ENTRIES.length,
+    recoveredIds: recovered.map(entry => entry.id),
+    nextEntryId: next ? next.id : null,
+    nextTitle: next ? next.title : "",
+    decoded: next === null,
+  };
+}
+
 const EXPLORATION_OBJECTIVES = [
   { id: "sol-signal", sectorId: "sol-frontier", title: "Trace the Beacon", detail: "Triangulate the repeating signal across the orbital debris.", reward: 20, color: "#78c8ff" },
   { id: "sol-wreckage", sectorId: "sol-frontier", title: "Survey the Wreckage", detail: "Scan a derelict relay drifting beyond the inner ring.", reward: 25, color: "#a7b8d8" },
@@ -3110,36 +3126,48 @@ class Game {
     c.fillStyle = "rgba(2, 5, 16, 0.98)"; c.fillRect(0, 0, W, H);
     for (let i = 0; i < 64; i++) {
       const x = (i * 173 + 23) % W, y = (i * 127 + 61) % H;
-      circle(c, x, y, i % 8 === 0 ? 2 : 1, i % 3 === 0 ? "rgba(180,140,255,0.62)" : "rgba(210,225,255,0.30)");
+      const alpha = 0.20 + 0.22 * (0.5 + 0.5 * Math.sin(this.time * 0.6 + i));
+      circle(c, x, y, i % 8 === 0 ? 2 : 1,
+        i % 3 === 0 ? `rgba(180,140,255,${alpha})` : `rgba(210,225,255,${alpha})`);
     }
-    const found = this.save.campaign.discoveries.length;
-    text(c, "FRONTIER ARCHIVE", W / 2, 62, 34, "#e4d9ff", true);
-    text(c, `RECOVERED INTEL  /  ${found} OF ${STORY_ENTRIES.length} RECORDS`, W / 2, 101, 14, "#9e91c7", true);
+    const signal = storySignalState(this.save.campaign.discoveries);
+    text(c, "FRONTIER ARCHIVE", W / 2, 58, 34, "#e4d9ff", true);
+    text(c, `RECOVERED INTEL  /  ${signal.recoveredCount} OF ${signal.total} RECORDS`, W / 2, 99, 14, "#9e91c7", true);
+
+    panel(c, 38, 119, W - 76, 62, "rgba(24, 17, 48, 0.88)", "rgba(180,140,255,0.42)", 12);
+    text(c, "SIGNAL CHAIN", 54, 142, 11, "#c7b5ff", true, "left");
+    text(c, signal.decoded ? "ROUTE DECODED" : `NEXT LEAD  /  ${signal.nextTitle}`,
+      W - 54, 142, 12, signal.decoded ? "#8dffce" : "#e4d9ff", true, "right");
+    c.fillStyle = "rgba(100,85,140,0.45)"; c.fillRect(54, 154, W - 108, 7);
+    c.fillStyle = signal.decoded ? "#8dffce" : "#b48cff";
+    c.fillRect(54, 154, (W - 108) * (signal.recoveredCount / Math.max(1, signal.total)), 7);
+
     STORY_ENTRIES.forEach((entry, i) => {
-      const y = 132 + i * 218, unlocked = this.storyDiscovered(entry);
+      const y = 196 + i * 195, unlocked = this.storyDiscovered(entry);
       const selected = this.storySelectedId === entry.id;
-      panel(c, 38, y, W - 76, 194,
+      panel(c, 38, y, W - 76, 170,
         selected ? "rgba(38, 25, 66, 0.88)" : "rgba(9, 12, 28, 0.88)",
         selected ? "rgba(180, 140, 255, 0.78)" : "rgba(150, 140, 190, 0.22)", 14);
-      text(c, unlocked ? entry.classification : "ENCRYPTED RECORD", 60, y + 27, 12,
-        unlocked ? "#bba0ff" : "#6b6682", true, "left");
-      text(c, unlocked ? entry.title : `RECORD ${String(i + 1).padStart(2, "0")}  /  LOCKED`, 60, y + 57, 20,
-        unlocked ? "#f0eaff" : "#8a849d", true, "left");
+      text(c, unlocked ? entry.classification : `FRAGMENT ${String(i + 1).padStart(2, "0")}  /  ENCRYPTED`,
+        60, y + 25, 11, unlocked ? "#bba0ff" : "#6b6682", true, "left");
+      text(c, unlocked ? entry.title : `RECORD ${String(i + 1).padStart(2, "0")}  /  LOCKED`,
+        60, y + 52, 19, unlocked ? "#f0eaff" : "#8a849d", true, "left");
       const lines = unlocked ? entry.body : entry.teaser;
       const words = lines.split(" ");
-      let line = "", lineY = y + 88, count = 0;
+      let line = "", lineY = y + 81, count = 0;
       for (const word of words) {
         const nextLine = line ? line + " " + word : word;
         if (nextLine.length > 67 && line) {
-          text(c, line, 60, lineY, 14, unlocked ? "#c5c8dc" : "#77748a", false, "left");
-          line = word; lineY += 23; count++;
+          text(c, line, 60, lineY, 13, unlocked ? "#c5c8dc" : "#77748a", false, "left");
+          line = word; lineY += 21; count++;
           if (count >= 3) break;
         } else line = nextLine;
       }
-      if (line && count < 3) text(c, line, 60, lineY, 14, unlocked ? "#c5c8dc" : "#77748a", false, "left");
-      text(c, unlocked ? "RECOVERED" : `COMPLETE ${CAMPAIGN_SECTORS[i].name} TO DECRYPT`, W - 58, y + 169, 11,
-        unlocked ? "#8dffce" : "#6e778b", true, "right");
-      this.buttons.push({ x: 38, y, w: W - 76, h: 194, fn: () => { this.storySelectedId = entry.id; } });
+      if (line && count < 3) text(c, line, 60, lineY, 13, unlocked ? "#c5c8dc" : "#77748a", false, "left");
+      text(c, unlocked ? (i < STORY_ENTRIES.length - 1 ? "SIGNAL POINTS TO THE NEXT SECTOR" : "ALL SIGNAL FRAGMENTS CONNECTED")
+        : `COMPLETE ${CAMPAIGN_SECTORS[i].name} TO DECRYPT`,
+        W - 58, y + 151, 10, unlocked ? "#8dffce" : "#6e778b", true, "right");
+      this.buttons.push({ x: 38, y, w: W - 76, h: 170, fn: () => { this.storySelectedId = entry.id; } });
     });
     this.smallButton(c, "BACK", 52, 1024, 270, 60, "#b48cff", () => this.closeStoryArchive());
     this.smallButton(c, this.storyReturnState === "campaign" ? "BACK TO STAR MAP" : "OPEN STAR MAP",
@@ -3539,5 +3567,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, W, H };
 else window.addEventListener("load", boot);
