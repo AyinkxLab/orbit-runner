@@ -103,7 +103,7 @@ with the tutorial and does not change daily or ranked challenge rules.
   shared schema makes campaign progress portable for future import/export tooling but
   does not automatically sync files between devices.
 
-### Realism pass
+- The existing cosmetics shop has a live preview for ship skins, trails, and titles. Preview selection does not equip or purchase an item; the existing BUY/EQUIP action remains explicit.\n\n### Realism pass
 
 - **Orbital motion:** inner rings orbit faster (Kepler-style), reversing has
   angular inertia, and ring changes use a spring-damper radial move.
