@@ -188,6 +188,10 @@ function shouldRenderScreenFlash(settings = {}) {
 function shouldApplyHitStop(settings = {}) {
   return settings.reducedMotion !== true;
 }
+function campaignPauseHint(sectorId) {
+  const sector = CAMPAIGN_SECTORS.find(item => item.id === sectorId);
+  return sector ? `${sector.name} - ${sector.objective}` : "";
+}
 function segDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx * dx + dy * dy;
@@ -3356,10 +3360,14 @@ class Game {
       W / 2, 380, 18, "#9696aa");
     text(c, `${this.mode === "daily" ? "DAILY" : this.mode === "ranked" ? `RANKED ${this.rankedWeek}` : this.contract.name} - ${this.ship.name}`,
       W / 2, 414, 18, "#78c8ff");
-    this.button(c, "Resume", 470, "#78ff8c", () => this.togglePause(), 96);
-    this.button(c, "Restart", 598, "#c8c8dc", () => this.beginMode(this.mode), 96);
-    this.button(c, "Title", 726, "#c8c8dc", () => this.goTitle(), 96);
-    this.button(c, this.save.muted ? "Settings (muted)" : "Settings", 854,
+    const campaignHint = campaignPauseHint(this.currentCampaignSector);
+    if (campaignHint) text(c, campaignHint, W / 2, 446, 15, "#ffd783");
+    // Reserve space for the campaign objective so it cannot overlap Resume.
+    const pauseButtonOffset = campaignHint ? 48 : 0;
+    this.button(c, "Resume", 470 + pauseButtonOffset, "#78ff8c", () => this.togglePause(), 96);
+    this.button(c, "Restart", 598 + pauseButtonOffset, "#c8c8dc", () => this.beginMode(this.mode), 96);
+    this.button(c, "Title", 726 + pauseButtonOffset, "#c8c8dc", () => this.goTitle(), 96);
+    this.button(c, this.save.muted ? "Settings (muted)" : "Settings", 854 + pauseButtonOffset,
       this.save.muted ? "#ff8a8a" : "#78e6ff", () => this.openSettings(), 84);
     text(c, "P / SPACE resume - R restart - T title - O settings - M mute", W / 2, 1010, 18, "#828296");
   }
@@ -3474,5 +3482,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, W, H };
 else window.addEventListener("load", boot);

@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -671,6 +671,13 @@ test("replaying an already-charted sector does not trigger the campaign ending a
   assert.equal(g.launchCampaignSector("sol-frontier"), true);
   g.die();
   assert.equal(g.state, "over");
+});
+
+test("campaign pause hint explains the selected sector objective and ignores unknown sectors", () => {
+  assert.equal(campaignPauseHint("sol-frontier"),
+    "SOL FRONTIER - Complete a run here to chart the frontier.");
+  assert.equal(campaignPauseHint("not-a-sector"), "");
+  assert.equal(campaignPauseHint(null), "");
 });
 
 test("reduced motion disables full-screen flash overlays without changing default visuals", () => {
