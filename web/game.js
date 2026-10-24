@@ -169,7 +169,17 @@ const CAMPAIGN_SECTORS = [
     description: "A dark anomaly bends starlight around the source of the signal.",
     objective: "Complete the Silent Expanse to open this route.", unlockAfter: "silent-expanse", position: [0.83, 0.39] },
 ];
-const freshCampaign = () => ({ version: 1, completed: [], selected: "sol-frontier" });
+const STORY_ENTRIES = [
+  { id: "beacon-awake", sectorId: "sol-frontier", title: "The Beacon Wakes", classification: "FIRST CONTACT",
+    teaser: "A signal older than the frontier itself.", body: "The beacon did not wake by accident. Its repeating pulse predates every mapped station in Sol Frontier, yet its power source is still warm. Someone—or something—has been waiting for a receiver." },
+  { id: "ember-expedition", sectorId: "ember-reach", title: "The Last Expedition", classification: "RECOVERED TRANSMISSION",
+    teaser: "A missing crew left one message behind.", body: "The expedition followed the beacon's pulse into Ember Reach. Their final transmission mentions a second signal beneath the red giant's magnetic storms. The crew's route ends at the edge of a region no chart records." },
+  { id: "silent-echo", sectorId: "silent-expanse", title: "An Echo in the Ice", classification: "BLACK-BOX FRAGMENT",
+    teaser: "Something answered from beneath the frozen stations.", body: "The black box records a response to the beacon—three tones, repeated from far beyond the ice field. The expedition did not build the signal. They found its trail, and the trail points inward." },
+  { id: "void-origin", sectorId: "void-crown", title: "The Signal's Origin", classification: "FRONTIER ARCHIVE",
+    teaser: "The source lies beyond the mapped systems.", body: "At the edge of the Void Crown, the signal resolves into a navigational pattern. The four sectors are not separate destinations; together they form a route. The beacon was never a warning. It was a map." },
+];
+const freshCampaign = () => ({ version: 2, completed: [], selected: "sol-frontier", discoveries: [] });
 function sanitizeCampaign(raw) {
   const out = freshCampaign();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
@@ -180,6 +190,14 @@ function sanitizeCampaign(raw) {
       out.completed.push(sector.id);
   }
   if (CAMPAIGN_SECTORS.some(s => s.id === raw.selected)) out.selected = raw.selected;
+  const knownDiscoveries = new Set(Array.isArray(raw.discoveries) ? raw.discoveries.filter(id =>
+    typeof id === "string" && STORY_ENTRIES.some(entry => entry.id === id)) : []);
+  // Completed sectors from older saves receive their corresponding story entries during migration.
+  for (const entry of STORY_ENTRIES) {
+    if (out.completed.includes(entry.sectorId) || knownDiscoveries.has(entry.id)) {
+      if (out.completed.includes(entry.sectorId)) out.discoveries.push(entry.id);
+    }
+  }
   return out;
 }
 
@@ -927,6 +945,7 @@ class Game {
     this.campaignSelectedSector = this.save.campaign.selected;
     this.currentCampaignSector = null;
     this.campaignMessage = "";
+    this.storyReturnState = "title";
     this.buyShield = false; this.message = ""; this.buttons = []; this.paused = false;
     this.gemStoreReturn = "title"; this.storeMessage = ""; this.storeBusy = false;
     this.mode = "classic"; this.contract = CONTRACTS[0]; this.ship = SHIPS[0];
@@ -967,7 +986,7 @@ class Game {
       shocks: [], shooting: [], shootingT: 2.5, shipTrail: [],
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
-      newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "",
+      newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
   }
   goTitle() {
@@ -1720,6 +1739,20 @@ class Game {
     this.state = "campaign";
     this.paused = false;
   }
+  openStoryArchive(returnState = this.state === "campaign" ? "campaign" : "title") {
+    this.storyReturnState = returnState === "campaign" ? "campaign" : "title";
+    this.storySelectedId = STORY_ENTRIES.find(entry => this.save.campaign.discoveries.includes(entry.id))?.id || STORY_ENTRIES[0].id;
+    this.state = "archive";
+    this.paused = false;
+  }
+  closeStoryArchive() {
+    this.state = this.storyReturnState === "campaign" ? "campaign" : "title";
+  }
+  storyEntry(id) { return STORY_ENTRIES.find(entry => entry.id === id) || null; }
+  storyDiscovered(entryOrId) {
+    const entry = typeof entryOrId === "string" ? this.storyEntry(entryOrId) : entryOrId;
+    return !!entry && this.save.campaign.discoveries.includes(entry.id);
+  }
   selectCampaignSector(id) {
     const sector = this.campaignSector(id);
     if (!sector) return false;
@@ -1748,10 +1781,14 @@ class Game {
     if (!this.currentCampaignSector) return false;
     const id = this.currentCampaignSector;
     if (!this.save.campaign.completed.includes(id)) this.save.campaign.completed.push(id);
+    const entry = STORY_ENTRIES.find(item => item.sectorId === id);
+    this.lastCampaignDiscovery = entry && !this.save.campaign.discoveries.includes(entry.id) ? entry.title : "";
+    if (entry && !this.save.campaign.discoveries.includes(entry.id)) this.save.campaign.discoveries.push(entry.id);
     this.currentCampaignSector = null;
     const index = CAMPAIGN_SECTORS.findIndex(s => s.id === id);
     const next = CAMPAIGN_SECTORS[index + 1];
-    this.campaignMessage = next ? `ROUTE DISCOVERED: ${next.name}` : "SECTOR CHARTED — CAMPAIGN FRONTIER COMPLETE";
+    this.campaignMessage = entry ? `INTEL RECOVERED: ${entry.title}`
+      : next ? `ROUTE DISCOVERED: ${next.name}` : "SECTOR CHARTED — CAMPAIGN FRONTIER COMPLETE";
     Save.write(this.save);
     return true;
   }
@@ -1771,8 +1808,16 @@ class Game {
     if (this.ads.showing) return this.ads.handleKey(k);
     const kk = k.length === 1 ? k.toLowerCase() : k;
     if (kk === "m") { this.toggleMute(); return; }
+    if (this.state === "title" && kk === "l") { this.openStoryArchive("title"); return; }
+    if (this.state === "title" && kk === "b") { this.openBoard("weekly"); return; }
+    if (this.state === "archive") {
+      if (kk === "escape" || kk === "b" || kk === "q") this.closeStoryArchive();
+      else if (kk === "m") this.toggleMute();
+      return;
+    }
     if (this.state === "campaign") {
       if (kk === "escape" || kk === "b" || kk === "q") this.goTitle();
+      else if (kk === "l") this.openStoryArchive("campaign");
       else if (kk === "arrowup" || kk === "w") {
         const i = CAMPAIGN_SECTORS.findIndex(s => s.id === this.campaignSelectedSector);
         this.selectCampaignSector(CAMPAIGN_SECTORS[(i + CAMPAIGN_SECTORS.length - 1) % CAMPAIGN_SECTORS.length].id);
@@ -1852,7 +1897,7 @@ class Game {
   tap(x, y) {
     if (this.ads.showing) return this.ads.handleTap(x, y);
     for (const b of this.buttons) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b.fn();
-    if (this.paused || this.state === "campaign" || this.state === "board" || this.state === "shop" ||
+    if (this.paused || this.state === "campaign" || this.state === "archive" || this.state === "board" || this.state === "shop" ||
         this.state === "settings" || this.state === "gems") return;
     if (this.state !== "over") this.action("tap");
   }
@@ -2360,6 +2405,7 @@ class Game {
   draw(c) {
     this.buttons = [];
     if (this.state === "campaign") return this.drawCampaignMap(c);
+    if (this.state === "archive") return this.drawStoryArchive(c);
     if (this.state === "board") return this.drawBoard(c);
     if (this.state === "shop") return this.drawShop(c);
     if (this.state === "settings") return this.drawSettings(c);
@@ -2724,9 +2770,54 @@ class Game {
     this.smallButton(c, unlocked ? "LAUNCH SELECTED SECTOR" : "SECTOR LOCKED",
       52, 1005, W - 104, 64, unlocked ? "#ffd783" : "#6e778b",
       () => this.launchCampaignSector(selected.id));
-    this.smallButton(c, "BACK TO TITLE", 52, 1087, W - 104, 56, "#83bfe9", () => this.goTitle());
-    text(c, this.campaignMessage || selected.objective, W / 2, 1181, 13, "#9bb6ce", false);
-    text(c, "UP / DOWN SELECT  •  ENTER LAUNCH  •  ESC BACK", W / 2, 1220, 12, "#607994");
+    this.smallButton(c, "STORY ARCHIVE", 52, 1080, 270, 56, "#b48cff", () => this.openStoryArchive("campaign"));
+    this.smallButton(c, "BACK TO TITLE", 340, 1080, 328, 56, "#83bfe9", () => this.goTitle());
+    text(c, this.campaignMessage || selected.objective, W / 2, 1168, 13, "#9bb6ce", false);
+    text(c, "UP / DOWN SELECT  •  ENTER LAUNCH  •  L ARCHIVE  •  ESC BACK", W / 2, 1214, 12, "#607994");
+  }
+
+  drawStoryArchive(c) {
+    c.fillStyle = "rgba(2, 5, 16, 0.98)"; c.fillRect(0, 0, W, H);
+    for (let i = 0; i < 64; i++) {
+      const x = (i * 173 + 23) % W, y = (i * 127 + 61) % H;
+      circle(c, x, y, i % 8 === 0 ? 2 : 1, i % 3 === 0 ? "rgba(180,140,255,0.62)" : "rgba(210,225,255,0.30)");
+    }
+    const found = this.save.campaign.discoveries.length;
+    text(c, "FRONTIER ARCHIVE", W / 2, 62, 34, "#e4d9ff", true);
+    text(c, `RECOVERED INTEL  /  ${found} OF ${STORY_ENTRIES.length} RECORDS`, W / 2, 101, 14, "#9e91c7", true);
+    STORY_ENTRIES.forEach((entry, i) => {
+      const y = 132 + i * 218, unlocked = this.storyDiscovered(entry);
+      const selected = this.storySelectedId === entry.id;
+      panel(c, 38, y, W - 76, 194,
+        selected ? "rgba(38, 25, 66, 0.88)" : "rgba(9, 12, 28, 0.88)",
+        selected ? "rgba(180, 140, 255, 0.78)" : "rgba(150, 140, 190, 0.22)", 14);
+      text(c, unlocked ? entry.classification : "ENCRYPTED RECORD", 60, y + 27, 12,
+        unlocked ? "#bba0ff" : "#6b6682", true, "left");
+      text(c, unlocked ? entry.title : `RECORD ${String(i + 1).padStart(2, "0")}  /  LOCKED`, 60, y + 57, 20,
+        unlocked ? "#f0eaff" : "#8a849d", true, "left");
+      const lines = unlocked ? entry.body : entry.teaser;
+      const words = lines.split(" ");
+      let line = "", lineY = y + 88, count = 0;
+      for (const word of words) {
+        const nextLine = line ? line + " " + word : word;
+        if (nextLine.length > 67 && line) {
+          text(c, line, 60, lineY, 14, unlocked ? "#c5c8dc" : "#77748a", false, "left");
+          line = word; lineY += 23; count++;
+          if (count >= 3) break;
+        } else line = nextLine;
+      }
+      if (line && count < 3) text(c, line, 60, lineY, 14, unlocked ? "#c5c8dc" : "#77748a", false, "left");
+      text(c, unlocked ? "RECOVERED" : `COMPLETE ${CAMPAIGN_SECTORS[i].name} TO DECRYPT`, W - 58, y + 169, 11,
+        unlocked ? "#8dffce" : "#6e778b", true, "right");
+      this.buttons.push({ x: 38, y, w: W - 76, h: 194, fn: () => { this.storySelectedId = entry.id; } });
+    });
+    this.smallButton(c, "BACK", 52, 1024, 270, 60, "#b48cff", () => this.closeStoryArchive());
+    this.smallButton(c, this.storyReturnState === "campaign" ? "BACK TO STAR MAP" : "OPEN STAR MAP",
+      340, 1024, 328, 60, "#78c8ff", () => {
+        this.closeStoryArchive();
+        if (this.state === "title") this.openCampaignMap();
+      });
+    text(c, "ARCHIVE RECORDS ARE SAVED ON THIS DEVICE  •  ESC / B TO RETURN", W / 2, 1130, 13, "#77748a");
   }
 
   drawTitle(c) {
@@ -2763,7 +2854,9 @@ class Game {
       this.smallButton(c, ct.name, x, 636, 190, 52, this.save.contract === ct.id ? "#ffd45a" : "#55557a",
         () => this.selectContract(ct.id));
     });
-    this.smallButton(c, "OPEN STAR MAP  /  THE LOST SYSTEMS", 80, 700, 560, 44, "#78c8ff", () => this.openCampaignMap());
+    this.smallButton(c, "OPEN STAR MAP  /  THE LOST SYSTEMS", 54, 700, 330, 44, "#78c8ff", () => this.openCampaignMap());
+    this.smallButton(c, `STORY ARCHIVE  ${this.save.campaign.discoveries.length}/${STORY_ENTRIES.length}`, 394, 700, 272, 44,
+      "#b48cff", () => this.openStoryArchive("title"));
 
     // actions
     const challengeWeek = this.challenge && this.challenge.mode === "ranked" ? this.challenge.week : null;
@@ -2798,7 +2891,7 @@ class Game {
       W / 2, 1200, 15, "#c8c8dc");
     text(c, "Crystals buy shields/cosmetics - gems revive runs",
       W / 2, 1224, 15, "#78e6ff");
-    text(c, "1/2/3 contract - V ship - R ranked - L board - C shop - G gems - O settings",
+    text(c, "1/2/3 contract - V ship - R ranked - L archive - B board - C shop - G gems - O settings",
       W / 2, 1248, 14, "#9aa6c0");
     text(c, "P pause - M mute - swipe up/down - tap to reverse", W / 2, 1270, 14, "#828296");
   }
@@ -2830,6 +2923,8 @@ class Game {
       W / 2, 418, 17, "#9696aa");
     text(c, `CRYSTALS ${this.save.bank}  GEMS ${this.save.gems}  LIFETIME ${this.save.lifetime}  TIER ${tierFor(this.save.best).name}`,
       W / 2, 444, 14, "#828296");
+    if (this.lastCampaignDiscovery) text(c, `INTEL RECOVERED: ${this.lastCampaignDiscovery}  •  OPEN STORY ARCHIVE`,
+      W / 2, 456, 13, "#bba0ff", true);
 
     panel(c, 68, 462, W - 136, 158, "rgba(10,16,30,0.65)", "rgba(120,200,255,0.12)", 14);
     text(c, "MISSIONS", 86, 482, 17, "#c8c8dc", true, "left");
@@ -3069,7 +3164,7 @@ function boot() {
 
 if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
-    CAMPAIGN_SECTORS, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
+    CAMPAIGN_SECTORS, STORY_ENTRIES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
     dateKey, weekKey, mulberry32, W, H };
 else window.addEventListener("load", boot);
