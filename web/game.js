@@ -1319,9 +1319,10 @@ class Game {
     this.checkMissions();
     this.refreshUnlocks();
     this.save.bank = Math.max(0, this.save.bank);
-    this.completeCampaignSector();
+    const completedCampaignSector = this.completeCampaignSector();
     Save.write(this.save);
-    this.state = "over"; this.paused = false; this.hitStop = 0;
+    this.state = completedCampaignSector && this.campaignFinished() ? "ending" : "over";
+    this.paused = false; this.hitStop = 0;
     if (this.ranked) {
       if (this.save.ranked.week !== this.rankedWeek || score > this.save.ranked.best) {
         this.save.ranked = { week: this.rankedWeek, best: Math.max(score, this.save.ranked.week === this.rankedWeek ? this.save.ranked.best : 0) };
@@ -1756,6 +1757,29 @@ class Game {
     const sector = typeof sectorOrId === "string" ? this.campaignSector(sectorOrId) : sectorOrId;
     return !!sector && (!sector.unlockAfter || this.save.campaign.completed.includes(sector.unlockAfter));
   }
+  sectorMastery(sectorId) {
+    const sector = this.campaignSector(sectorId);
+    const objectives = EXPLORATION_OBJECTIVES.filter(item => item.sectorId === sectorId);
+    const completedObjectives = objectives.filter(item => this.explorationDone(item, sectorId)).length;
+    const campaignCompleted = this.save.campaign.completed.includes(sectorId);
+    return {
+      sectorId, campaignCompleted, completedObjectives, totalObjectives: objectives.length,
+      mastered: !!sector && campaignCompleted && objectives.length > 0 && completedObjectives === objectives.length,
+    };
+  }
+  campaignMastery() {
+    const sectors = CAMPAIGN_SECTORS.map(sector => this.sectorMastery(sector.id));
+    return {
+      masteredSectors: sectors.filter(item => item.mastered).length,
+      completedSectors: sectors.filter(item => item.campaignCompleted).length,
+      completedObjectives: sectors.reduce((sum, item) => sum + item.completedObjectives, 0),
+      totalObjectives: EXPLORATION_OBJECTIVES.length,
+      sectors,
+    };
+  }
+  campaignFinished() {
+    return CAMPAIGN_SECTORS.every(sector => this.save.campaign.completed.includes(sector.id));
+  }
   openCampaignMap() {
     this.campaignSelectedSector = this.save.campaign.selected || CAMPAIGN_SECTORS[0].id;
     this.campaignMessage = "";
@@ -1836,7 +1860,8 @@ class Game {
   completeCampaignSector() {
     if (!this.currentCampaignSector) return false;
     const id = this.currentCampaignSector;
-    if (!this.save.campaign.completed.includes(id)) this.save.campaign.completed.push(id);
+    const newlyCompleted = !this.save.campaign.completed.includes(id);
+    if (newlyCompleted) this.save.campaign.completed.push(id);
     const entry = STORY_ENTRIES.find(item => item.sectorId === id);
     this.lastCampaignDiscovery = entry && !this.save.campaign.discoveries.includes(entry.id) ? entry.title : "";
     if (entry && !this.save.campaign.discoveries.includes(entry.id)) this.save.campaign.discoveries.push(entry.id);
@@ -1846,7 +1871,7 @@ class Game {
     this.campaignMessage = entry ? `INTEL RECOVERED: ${entry.title}`
       : next ? `ROUTE DISCOVERED: ${next.name}` : "SECTOR CHARTED — CAMPAIGN FRONTIER COMPLETE";
     Save.write(this.save);
-    return true;
+    return newlyCompleted;
   }
 
   // ---- input ------------------------------------------------------------
@@ -1866,6 +1891,12 @@ class Game {
     if (kk === "m") { this.toggleMute(); return; }
     if (this.state === "title" && kk === "l") { this.openStoryArchive("title"); return; }
     if (this.state === "title" && kk === "b") { this.openBoard("weekly"); return; }
+    if (this.state === "ending") {
+      if (kk === "escape" || kk === "b" || kk === "q" || kk === "t") this.goTitle();
+      else if (kk === "s" || kk === "enter") this.openCampaignMap();
+      else if (kk === "l") this.openStoryArchive("title");
+      return;
+    }
     if (this.state === "archive") {
       if (kk === "escape" || kk === "b" || kk === "q") this.closeStoryArchive();
       else if (kk === "m") this.toggleMute();
@@ -1961,7 +1992,7 @@ class Game {
   tap(x, y) {
     if (this.ads.showing) return this.ads.handleTap(x, y);
     for (const b of this.buttons) if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b.fn();
-    if (this.paused || this.state === "campaign" || this.state === "archive" || this.state === "board" || this.state === "shop" ||
+    if (this.paused || this.state === "campaign" || this.state === "ending" || this.state === "archive" || this.state === "board" || this.state === "shop" ||
         this.state === "settings" || this.state === "gems") return;
     if (this.state !== "over") this.action("tap");
   }
@@ -2469,6 +2500,7 @@ class Game {
   draw(c) {
     this.buttons = [];
     if (this.state === "campaign") return this.drawCampaignMap(c);
+    if (this.state === "ending") return this.drawCampaignEnding(c);
     if (this.state === "explore") return this.drawPlanetExplore(c);
     if (this.state === "archive") return this.drawStoryArchive(c);
     if (this.state === "board") return this.drawBoard(c);
@@ -2825,9 +2857,11 @@ class Game {
       text(c, `${i + 1}. ${sector.name}`, 153, y + 36, 20, titleCol, true, "left");
       text(c, sector.subtitle, 153, y + 62, 12, unlocked ? "#80d8ff" : "#65738a", true, "left");
       text(c, sector.description, 153, y + 94, 13, "#b8c6d9", false, "left");
-      text(c, completed ? "SECTOR CHARTED" : unlocked ? "ROUTE AVAILABLE" : "ROUTE LOCKED",
-        153, y + 126, 13, completed ? "#8dffce" : unlocked ? "#80d8ff" : "#768096", true, "left");
-      text(c, sector.biome.toUpperCase() + " ENVIRONMENT", 153, y + 151, 11, "#778aa4", false, "left");
+      const mastery = this.sectorMastery(sector.id);
+      text(c, mastery.mastered ? "SECTOR MASTERED" : completed ? "SECTOR CHARTED" : unlocked ? "ROUTE AVAILABLE" : "ROUTE LOCKED",
+        153, y + 126, 13, mastery.mastered ? "#8dffce" : completed ? "#a5c9e8" : unlocked ? "#80d8ff" : "#768096", true, "left");
+      text(c, "SURVEYS " + mastery.completedObjectives + "/" + mastery.totalObjectives + "  •  " + sector.biome.toUpperCase(),
+        153, y + 151, 11, mastery.mastered ? "#8dffce" : "#778aa4", false, "left");
       this.buttons.push({ x, y, w, h, fn: () => this.selectCampaignSector(sector.id) });
     });
     const selected = this.campaignSector(this.campaignSelectedSector) || CAMPAIGN_SECTORS[0];
@@ -2840,8 +2874,54 @@ class Game {
       () => this.openPlanetExplore(selected.id));
     this.smallButton(c, "STORY ARCHIVE", 52, 1080, 270, 56, "#b48cff", () => this.openStoryArchive("campaign"));
     this.smallButton(c, "BACK TO TITLE", 340, 1080, 328, 56, "#83bfe9", () => this.goTitle());
-    text(c, this.campaignMessage || selected.objective, W / 2, 1168, 13, "#9bb6ce", false);
+    const progress = this.campaignMastery();
+    text(c, this.campaignMessage || ("SECTORS MASTERED " + progress.masteredSectors + "/4  •  OPTIONAL SURVEYS " +
+      progress.completedObjectives + "/" + progress.totalObjectives), W / 2, 1168, 13, "#9bb6ce", false);
     text(c, "UP / DOWN SELECT  •  ENTER LAUNCH  •  L ARCHIVE  •  ESC BACK", W / 2, 1214, 12, "#607994");
+  }
+
+  drawCampaignEnding(c) {
+    const progress = this.campaignMastery();
+    c.fillStyle = "rgba(2, 5, 16, 0.99)"; c.fillRect(0, 0, W, H);
+    for (let i = 0; i < 110; i++) {
+      const x = (i * 173 + 29) % W, y = (i * 197 + 11) % H;
+      circle(c, x, y, i % 11 === 0 ? 2 : 1,
+        i % 4 === 0 ? "rgba(180,140,255,0.7)" : "rgba(180,220,255,0.38)");
+    }
+    if (typeof c.createRadialGradient === "function") {
+      const glow = c.createRadialGradient(W / 2, 285, 10, W / 2, 285, 280);
+      glow.addColorStop(0, "rgba(125,100,255,0.28)");
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      c.fillStyle = glow; c.fillRect(W / 2 - 285, 0, 570, 570);
+    }
+    text(c, "THE SIGNAL ANSWERS", W / 2, 92, 34, "#e7ddff", true);
+    text(c, "CAMPAIGN COMPLETE", W / 2, 151, 26, "#8dffce", true);
+    text(c, "Four lost systems. One map. A signal finally understood.", W / 2, 195, 15, "#b8c6d9");
+    const px = W / 2, py = 318;
+    circle(c, px, py, 82, "#493c83");
+    circle(c, px, py, 64, "#1d2d56");
+    circle(c, px - 20, py - 18, 18, "rgba(255,255,255,0.22)");
+    c.strokeStyle = "rgba(180,150,255,0.85)"; c.lineWidth = 3;
+    c.beginPath(); c.ellipse(px, py, 128, 32, -0.25, 0, TAU); c.stroke();
+    text(c, "SECTOR MASTERY  " + progress.masteredSectors + " / 4", W / 2, 432, 20, "#e4f3ff", true);
+    text(c, "OPTIONAL SURVEYS  " + progress.completedObjectives + " / " + progress.totalObjectives,
+      W / 2, 466, 16, "#9bb6ce", true);
+    progress.sectors.forEach((item, i) => {
+      const sector = CAMPAIGN_SECTORS[i], y = 512 + i * 82;
+      panel(c, 76, y, W - 152, 66, item.mastered ? "rgba(12,42,43,0.86)" : "rgba(8,16,32,0.92)",
+        item.mastered ? "rgba(141,255,206,0.62)" : "rgba(120,190,230,0.24)", 12);
+      text(c, sector.name, 96, y + 26, 16, "#e6f3ff", true, "left");
+      text(c, item.mastered ? "MASTERED" : item.completedObjectives + "/" + item.totalObjectives + " SURVEYS",
+        W - 96, y + 26, 13, item.mastered ? "#8dffce" : "#a8bad1", true, "right");
+    });
+    text(c, progress.masteredSectors === CAMPAIGN_SECTORS.length
+      ? "FRONTIER FULLY MASTERED — EVERY SURVEY RECOVERED"
+      : "MAIN STORY COMPLETE — OPTIONAL SURVEYS REMAIN FOR FULL MASTERY",
+      W / 2, 874, 14, progress.masteredSectors === CAMPAIGN_SECTORS.length ? "#8dffce" : "#b8c6d9", true);
+    this.smallButton(c, "RETURN TO STAR MAP", 76, 938, W - 152, 62, "#78c8ff", () => this.openCampaignMap());
+    this.smallButton(c, "STORY ARCHIVE", 76, 1012, (W - 168) / 2, 58, "#b48cff", () => this.openStoryArchive("title"));
+    this.smallButton(c, "BACK TO TITLE", 92 + (W - 168) / 2, 1012, (W - 168) / 2, 58, "#83bfe9", () => this.goTitle());
+    text(c, "OPTIONAL EXPLORATION NEVER BLOCKS THE CAMPAIGN ENDING", W / 2, 1120, 12, "#607994");
   }
 
   drawPlanetExplore(c) {
