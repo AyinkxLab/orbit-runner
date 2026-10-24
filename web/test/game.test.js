@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, planetSurveyProfile } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -601,6 +601,14 @@ test("campaign completion persists its story discovery and archive navigation re
   assert.equal(g.state, "title");
 });
 
+
+test("each campaign planet has a unique survey briefing and unknown sectors are rejected", () => {
+  const profiles = CAMPAIGN_SECTORS.map(sector => planetSurveyProfile(sector.id));
+  assert.equal(profiles.length, CAMPAIGN_SECTORS.length);
+  assert.ok(profiles.every(profile => profile && profile.environment && profile.hazard && profile.focus && profile.fieldNote));
+  assert.equal(new Set(profiles.map(profile => profile.environment)).size, profiles.length);
+  assert.equal(planetSurveyProfile("unknown-sector"), null);
+});
 
 test("planet exploration is available only for unlocked campaign sectors", () => {
   const g = newGame();
