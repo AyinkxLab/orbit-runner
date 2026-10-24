@@ -3383,9 +3383,10 @@ function boot() {
     last = now;
     game.update(dt);
     game.draw(ctx);
-    if (status && game.state !== lastAnnouncedState) {
-      lastAnnouncedState = game.state;
-      status.textContent = stateAnnouncement(game.state);
+    const announcedState = game.paused && game.state === "play" ? "pause" : game.state;
+    if (status && announcedState !== lastAnnouncedState) {
+      lastAnnouncedState = announcedState;
+      status.textContent = stateAnnouncement(announcedState === "archive" ? "story" : announcedState);
     }
     frameHandle = requestAnimationFrame(loop);
   }
