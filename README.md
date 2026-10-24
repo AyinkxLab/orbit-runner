@@ -297,6 +297,26 @@ python -m unittest discover -s server -p "test_*.py" -v
 | `docker-compose.yml` | Local/production service definition |
 | `.github/workflows/ci.yml` | Web, desktop and server test pipeline |
 
+## Release validation checklist
+
+Before publishing a web/PWA or desktop release:
+
+1. Run web, desktop, and server tests from the commands above.
+2. Confirm the campaign star map, story archive, optional surveys, mastery, and ending
+   work from a clean save and a migrated existing save.
+3. Verify the desktop campaign map and save validation, including sector unlock order.
+4. Test keyboard and touch controls, pause-on-tab-switch, reduced-motion and low-FX
+   settings, colour cues, audio toggles, and the screen-reader status announcements.
+5. Test the PWA offline after first load and confirm the service-worker cache version
+   changes with the release.
+6. Check phone safe areas, narrow screens, desktop window sizes, and the latest
+   Chrome/Firefox/Safari/Edge versions available to the release team.
+7. Review third-party service configuration, ad/IAP consent and reward handling, and
+   privacy disclosures before enabling production integrations. The demo store and
+   mock rewarded ads are not production billing/ad integrations.
+8. Choose and add a license before public distribution; verify asset and store listing
+   rights for the target platforms.
+
 ## Notes
 
 - The service worker uses a versioned cache and network-first navigation. Bump

@@ -23,12 +23,18 @@
       box-sizing: border-box;
       padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
     canvas { display: block; touch-action: none; -webkit-touch-callout: none; cursor: pointer; }
+    canvas:focus-visible { outline: 3px solid #78c8ff; outline-offset: 4px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     noscript { color: #c8c8dc; font: 18px ui-monospace, monospace; text-align: center; padding: 2rem; }
   </style>
 </head>
 <body>
   <div id="stage">
-    <canvas id="game" aria-label="Orbit Runner game"></canvas>
+    <canvas id="game" tabindex="0" aria-label="Orbit Runner game"
+      aria-describedby="game-help game-status"></canvas>
+    <p id="game-help" class="sr-only">Orbit Runner is an arcade game shown on a canvas. Use Up or W to move to the outer ring, Down or S to move to the inner ring, Space to reverse orbit, P to pause, and M to mute. On touch screens, swipe up or down to change rings and tap to reverse. Menus can be used with keyboard shortcuts shown in the game.</p>
+    <p id="game-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true">Title screen. Press Space to start or C to open the campaign star map.</p>
   </div>
   <noscript>Orbit Runner needs JavaScript enabled.</noscript>
   <script src="config.js"></script>
