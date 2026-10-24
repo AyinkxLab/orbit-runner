@@ -28,6 +28,45 @@ meta-progression.
 | Daily challenge | `D` | `DAILY CHALLENGE` button |
 | Quit | `Esc` | close the tab |
 
+## How to play
+
+**Goal:** survive as long as you can, dodge meteors and burning solar flares, collect
+crystals, and build a high score. A collision can end your run, so keep moving and
+watch the warnings.
+
+### Your first run
+
+1. Open [Orbit Runner](https://ayinkx.github.io/orbit-runner/web/) and start a classic run.
+2. Move between the three orbital rings to avoid incoming meteors. Use the controls
+   below to move outward or inward.
+3. Tap or press Space to reverse your orbit when you need to change direction.
+4. Collect the glowing crystals. Each pickup adds points and increases your combo;
+   a higher combo means more points per crystal.
+5. Read the solar-flare warning. It names the ring about to burn and shows the time
+   remaining. Move to another ring before the countdown ends.
+6. Collect power-ups when it is safe: shields protect against a hit, magnets help
+   gather crystals, and time warp slows meteors temporarily.
+7. Keep going as levels rise. Every five levels, a **Corona Surge** asks you to
+   collect three golden cores before time runs out.
+8. When the run ends, review your score and rewards. Use crystals for progression,
+   complete missions, and try again to beat your best.
+
+### Tips for new pilots
+
+- **Look ahead:** watch the meteor paths and flare countdown, not just your ship.
+- **Change rings early:** don't wait until a meteor is right beside you.
+- **Protect your combo:** collect crystals and dodge hazards to keep the multiplier going.
+- **Learn the rings:** Up/W moves outward; Down/S moves inward. Space reverses orbit.
+- **Start with STANDARD:** BLAZE adds frequent flares, while VOID makes meteors faster.
+- **Pause whenever needed:** press P on desktop or use the on-screen pause control.
+- **Try the campaign:** from the web title screen, open the campaign/star map, choose
+  an unlocked sector, and launch it. Complete a run to chart sectors, unlock routes,
+  discover story entries, and optionally explore planets. The desktop build opens
+  its campaign map with C; use Left/Right to select a sector, Space to launch an
+  unlocked sector, and B to return.
+- **Daily and ranked runs are competitive:** their loadouts and rules are fixed;
+  purchased shields and revives do not apply.
+
 ## The loop
 
 - **Three rings, endless meteors, crystals and a combo multiplier.** Combo decays
