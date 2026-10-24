@@ -3358,11 +3358,49 @@ function boot() {
   window.addEventListener("blur", autoPause);
 
   let last = performance.now();
-  (function loop(now) {
-    const dt = Math.min((now - last) / 1000, 0.05); last = now;
-    game.update(dt); game.draw(ctx);
-    requestAnimationFrame(loop);
-  })(last);
+  let frameHandle = null;
+  let lastAnnouncedState = "";
+  const status = document.getElementById("game-status");
+  const stateAnnouncement = state => ({
+    title: "Title screen. Press Space to start, or C to open the campaign star map.",
+    play: "Game in progress. Up or W moves outward, Down or S moves inward, Space reverses orbit, and P pauses.",
+    pause: "Game paused. Press P or Space to resume, R to restart, or T to return to the title.",
+    over: "Run over. Review your score, continue if available, restart, or return to the title.",
+    ending: "Campaign complete. Use the on-screen options to revisit the star map or story archive.",
+    campaign: "Campaign star map. Use left and right arrows to choose a sector and Enter or Space to open it.",
+    explore: "Planet survey. Follow the on-screen controls to inspect and record optional discoveries.",
+    story: "Story archive. Browse the unlocked entries and return to the star map or title.",
+    settings: "Settings. Toggle visual effects, audio, and display options.",
+    shop: "Cosmetics shop. Browse items and equip or unlock available cosmetics.",
+    board: "Leaderboard. Browse tabs, refresh results, or return to the title.",
+    gems: "Gem store. Browse packs and return when finished."
+  }[state] || "Orbit Runner screen changed.");
+
+  function loop(now) {
+    frameHandle = null;
+    if (document.hidden) return;
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    game.update(dt);
+    game.draw(ctx);
+    if (status && game.state !== lastAnnouncedState) {
+      lastAnnouncedState = game.state;
+      status.textContent = stateAnnouncement(game.state);
+    }
+    frameHandle = requestAnimationFrame(loop);
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      autoPause();
+      if (frameHandle !== null) cancelAnimationFrame(frameHandle);
+      frameHandle = null;
+    } else if (frameHandle === null) {
+      last = performance.now();
+      frameHandle = requestAnimationFrame(loop);
+    }
+  });
+  frameHandle = requestAnimationFrame(loop);
 
   if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js");
 }
