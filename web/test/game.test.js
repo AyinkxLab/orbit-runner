@@ -611,3 +611,37 @@ test("exploration save migration drops unknown and cross-sector objective IDs", 
   assert.deepEqual(clean.exploration["void-crown"], ["void-origin"]);
   assert.deepEqual(clean.exploration["ember-reach"], []);
 });
+
+
+test("sector mastery requires campaign completion and all sector surveys", () => {
+  const g = newGame();
+  g.save.campaign.completed = ["sol-frontier"];
+  g.openPlanetExplore("sol-frontier");
+  assert.equal(g.sectorMastery("sol-frontier").mastered, false);
+  for (const objective of g.explorationObjectives()) assert.equal(g.completeExplorationObjective(objective.id), true);
+  assert.equal(g.sectorMastery("sol-frontier").mastered, true);
+  const progress = g.campaignMastery();
+  assert.equal(progress.masteredSectors, 1);
+  assert.equal(progress.completedSectors, 1);
+  assert.equal(progress.completedObjectives, 3);
+  assert.equal(progress.totalObjectives, 12);
+});
+
+test("campaign ending appears after the final new sector is completed, even with optional surveys left", () => {
+  const g = newGame();
+  g.save.campaign.completed = CAMPAIGN_SECTORS.slice(0, -1).map(sector => sector.id);
+  assert.equal(g.campaignFinished(), false);
+  assert.equal(g.launchCampaignSector(CAMPAIGN_SECTORS[CAMPAIGN_SECTORS.length - 1].id), true);
+  g.die();
+  assert.equal(g.campaignFinished(), true);
+  assert.equal(g.state, "ending");
+  assert.equal(g.campaignMastery().masteredSectors, 0);
+});
+
+test("replaying an already-charted sector does not trigger the campaign ending again", () => {
+  const g = newGame();
+  g.save.campaign.completed = CAMPAIGN_SECTORS.map(sector => sector.id);
+  assert.equal(g.launchCampaignSector("sol-frontier"), true);
+  g.die();
+  assert.equal(g.state, "over");
+});
