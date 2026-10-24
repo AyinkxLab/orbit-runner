@@ -91,6 +91,12 @@ const SHOP_ITEMS = [
   { id: "title_legend", type: "title", name: "Orbit Legend", cost: 900, value: "ORBIT LEGEND" },
 ];
 
+function cosmeticPreviewItem(type, previewId, equipped = {}, items = SHOP_ITEMS) {
+  const candidates = items.filter(item => item.type === type);
+  return candidates.find(item => item.id === previewId) ||
+    candidates.find(item => item.id === equipped[type]) || candidates[0] || null;
+}
+
 const SKIN_LIVERIES = {
   scout: { hull: "#e8eef8", wing: "#9fb3cc", trim: "#78d8ff", accent: "#ff6a6a" },
   interceptor: { hull: "#eef6ff", wing: "#c0d4e8", trim: "#78d8ff", accent: "#ff6a6a" },
@@ -2569,26 +2575,50 @@ class Game {
         this.shopTab === id ? "#ffd45a" : "#55557a", () => { this.shopTab = id; });
     });
     const items = SHOP_ITEMS.filter(i => i.type === this.shopTab);
+    const preview = cosmeticPreviewItem(this.shopTab, this.shopPreviewId, this.save.cosmetics.equipped);
+    panel(c, 60, 230, W - 120, 86, "rgba(16,25,44,0.92)", "rgba(120,200,255,0.24)", 14);
+    text(c, "LIVE PREVIEW", 78, 252, 11, "#7fa7c8", true, "left");
+    if (preview) {
+      text(c, preview.name, 78, 282, 18, "#e8eef8", true, "left");
+      if (preview.type === "skin") {
+        const livery = SKIN_LIVERIES[preview.value] || SKIN_LIVERIES.scout;
+        drawAircraft(c, W - 160, 270, -Math.PI / 2, livery, this.time, 0);
+      } else if (preview.type === "trail") {
+        c.globalAlpha = 0.28;
+        c.strokeStyle = preview.value; c.lineWidth = 14;
+        c.beginPath(); c.moveTo(W - 260, 270); c.lineTo(W - 130, 270); c.stroke();
+        c.globalAlpha = 1;
+        for (let i = 0; i < 5; i++) circle(c, W - 250 + i * 24, 270, 4 + (i % 2) * 2, preview.value);
+      } else {
+        text(c, preview.value, W - 170, 270, 18, "#b48cff", true);
+      }
+      const equipped = this.save.cosmetics.equipped[preview.type] === preview.id;
+      text(c, equipped ? "CURRENTLY EQUIPPED" :
+        this.save.cosmetics.owned.includes(preview.id) ? "OWNED — READY TO EQUIP" :
+        `COST  ${preview.cost} CRYSTALS`,
+        W - 78, 297, 10, equipped ? "#78ff8c" : "#9aa6c0", true, "right");
+    }
     items.forEach((item, i) => {
-      const y = 252 + i * 104;
+      const y = 330 + i * 100;
       const owned = this.save.cosmetics.owned.includes(item.id);
       const equipped = this.save.cosmetics.equipped[item.type] === item.id;
-      panel(c, 60, y, W - 120, 88,
-        equipped ? "rgba(120,255,140,0.08)" : "rgba(255,255,255,0.035)",
-        equipped ? "rgba(120,255,140,0.45)" : "rgba(255,255,255,0.07)", 14);
-      text(c, item.name, 82, y + 30, 20, equipped ? "#78ff8c" : "#e8eef8", true, "left");
+      const selected = preview && preview.id === item.id;
+      panel(c, 60, y, W - 120, 86,
+        equipped ? "rgba(120,255,140,0.08)" : selected ? "rgba(120,200,255,0.08)" : "rgba(255,255,255,0.035)",
+        equipped ? "rgba(120,255,140,0.45)" : selected ? "rgba(120,200,255,0.55)" : "rgba(255,255,255,0.07)", 14);
+      text(c, item.name, 82, y + 28, 19, equipped ? "#78ff8c" : "#e8eef8", true, "left");
       const status = equipped ? "EQUIPPED" : owned ? "OWNED" : `${item.cost} CRYSTALS`;
-      text(c, status, 82, y + 60, 14, equipped ? "#78ff8c" : owned ? "#9696aa" : "#ffd45a", false, "left");
+      text(c, status, 82, y + 56, 13, equipped ? "#78ff8c" : owned ? "#9696aa" : "#ffd45a", false, "left");
       this.smallButton(c, equipped ? "ACTIVE" : owned ? "EQUIP" : "BUY",
-        W - 250, y + 22, 170, 44, equipped ? "#78ff8c" : owned ? "#78c8ff" : "#ffd45a",
+        W - 250, y + 20, 170, 44, equipped ? "#78ff8c" : owned ? "#78c8ff" : "#ffd45a",
         () => this.buyOrEquip(item));
-      if (item.type === "trail") {
-        circle(c, W - 300, y + 44, 9, item.value);
-      }
+      if (item.type === "trail") circle(c, W - 300, y + 43, 9, item.value);
+      // Row selection is registered after the action button so BUY/EQUIP remains clickable.
+      this.buttons.push({ x: 60, y, w: W - 120, h: 86, fn: () => { this.shopPreviewId = item.id; } });
     });
-    if (this.shopMessage) text(c, this.shopMessage, W / 2, 820, 18, "#ffd45a");
-    this.button(c, "BACK", 850, "#c8c8dc", () => this.goTitle(), 72);
-    text(c, "1/2/3 tabs - B / ESC back", W / 2, 960, 17, "#828296");
+    if (this.shopMessage) text(c, this.shopMessage, W / 2, 890, 16, "#ffd45a");
+    this.button(c, "BACK", 950, "#c8c8dc", () => this.goTitle(), 62);
+    text(c, "SELECT AN ITEM TO PREVIEW  •  BUY / EQUIP TO APPLY  •  B / ESC BACK", W / 2, 1035, 13, "#828296");
   }
 
   drawSpace(c, ox = 0, oy = 0) {
@@ -3630,5 +3660,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, W, H };
 else window.addEventListener("load", boot);

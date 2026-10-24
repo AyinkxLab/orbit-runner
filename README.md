@@ -152,6 +152,7 @@ runs keep their existing pause layout and rules.
 - The web galaxy map uses the existing sector positions to draw connected routes, distinguish locked and charted systems, and show the selected sector's objective without duplicating campaign progression or save data.
 - Planetary surveys show sector-specific environmental conditions, hazards, research focus, and field notes while reusing the existing 12 optional objectives and rewards.
 - Campaign boss encounters now use sector-specific profiles, with distinct core movement, target-ring patterns, timers, and names. Daily/ranked runs keep the standard Corona Surge profile.
+- The existing cosmetics shop has a live preview for ship skins, trails, and titles. Preview selection does not equip or purchase an item; the existing BUY/EQUIP action remains explicit.
 
 ### Realism pass
 
