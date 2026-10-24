@@ -1,7 +1,7 @@
 // Service worker: caches the game so it works offline once installed.
 // Bump CACHE whenever the game files change. Navigation is network-first so a
 // deployed update is picked up as soon as the player is online.
-const CACHE = "orbit-runner-v16";
+const CACHE = "orbit-runner-v17";
 const FILES = ["./", "./index.html", "./config.js", "./game.js", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
