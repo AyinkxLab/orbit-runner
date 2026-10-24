@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, flareWarningText } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -140,6 +140,14 @@ test("first-run pacing eases tutorial meteor pressure without changing competiti
 
   assert.equal(difficultyProfile(99).level, 14);
   assert.equal(difficultyProfile(-4).level, 1);
+});
+
+test("flare warnings name the target ring and countdown without relying on color", () => {
+  assert.equal(flareWarningText(2.56, 0), "FLARE IN 2.6s — INNER RING");
+  assert.equal(flareWarningText(0.34, 2), "FLARE IN 0.3s — OUTER RING");
+  assert.equal(flareWarningText(0, 1), "");
+  assert.equal(flareWarningText(2, 99), "");
+  assert.equal(flareWarningText(Number.NaN, 1), "");
 });
 
 test("combo decays after the timer", () => {
