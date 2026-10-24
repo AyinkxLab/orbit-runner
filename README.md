@@ -103,7 +103,7 @@ with the tutorial and does not change daily or ranked challenge rules.
   shared schema makes campaign progress portable for future import/export tooling but
   does not automatically sync files between devices.
 
-### Realism pass
+- The title screen links to a pilot badge board with progress derived from existing run stats, campaign discoveries, surveys, lifetime crystals, and cosmetics. Achievements add no separate save schema or gameplay advantage.\n\n### Realism pass
 
 - **Orbital motion:** inner rings orbit faster (Kepler-style), reversing has
   angular inertia, and ring changes use a spring-damper radial move.
