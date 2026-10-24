@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, campaignMapPoint } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -535,6 +535,16 @@ test("campaign progression validates sector order and unknown IDs", () => {
   assert.deepEqual(clean.completed, ["sol-frontier", "ember-reach"]);
   assert.equal(clean.selected, "void-crown");
   assert.equal(CAMPAIGN_SECTORS.length, 4);
+});
+
+test("campaign map positions produce usable canvas coordinates", () => {
+  const points = CAMPAIGN_SECTORS.map(sector => campaignMapPoint(sector));
+  assert.equal(points.length, 4);
+  assert.ok(points.every(point => point && Number.isFinite(point.x) && Number.isFinite(point.y)));
+  assert.ok(points.every(point => point.x >= 42 && point.x <= 678));
+  assert.ok(points.every(point => point.y >= 145 && point.y <= 645));
+  assert.equal(campaignMapPoint({ position: ["bad", 0.5] }), null);
+  assert.equal(campaignMapPoint({}), null);
 });
 
 test("campaign map prevents locked launches and starts selected biome", () => {
