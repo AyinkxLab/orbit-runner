@@ -91,6 +91,12 @@ const SHOP_ITEMS = [
   { id: "title_legend", type: "title", name: "Orbit Legend", cost: 900, value: "ORBIT LEGEND" },
 ];
 
+function cosmeticPreviewItem(type, previewId, equipped = {}, items = SHOP_ITEMS) {
+  const candidates = items.filter(item => item.type === type);
+  return candidates.find(item => item.id === previewId) ||
+    candidates.find(item => item.id === equipped[type]) || candidates[0] || null;
+}
+
 const SKIN_LIVERIES = {
   scout: { hull: "#e8eef8", wing: "#9fb3cc", trim: "#78d8ff", accent: "#ff6a6a" },
   interceptor: { hull: "#eef6ff", wing: "#c0d4e8", trim: "#78d8ff", accent: "#ff6a6a" },
@@ -196,6 +202,29 @@ function flareWarningText(secondsRemaining, ringIndex) {
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
   return `FLARE IN ${secondsRemaining.toFixed(1)}s — ${ring.toUpperCase()} RING`;
 }
+const CAMPAIGN_BOSS_PROFILES = [
+  { sectorId: "sol-frontier", name: "BEACON WARDEN", intro: "BEACON WARDEN DETECTED",
+    timer: 14, need: 3, coreDelay: 1.5, coreLife: 6, spin: 0.75, ringMode: "any",
+    coreColor: "#78c8ff", clearLabel: "WARDEN DEFEATED", failLabel: "WARDEN WITHDREW" },
+  { sectorId: "ember-reach", name: "EMBER COLOSSUS", intro: "EMBER COLOSSUS RISING",
+    timer: 13, need: 3, coreDelay: 1.2, coreLife: 5.5, spin: 1.1, ringMode: "outer",
+    coreColor: "#ff874f", clearLabel: "COLOSSUS DEFEATED", failLabel: "COLOSSUS SURVIVED" },
+  { sectorId: "silent-expanse", name: "FROST SENTINEL", intro: "FROST SENTINEL AWAKENS",
+    timer: 15, need: 3, coreDelay: 1.8, coreLife: 7, spin: 0.5, ringMode: "inner",
+    coreColor: "#8deaff", clearLabel: "SENTINEL DISABLED", failLabel: "SENTINEL REFORMS" },
+  { sectorId: "void-crown", name: "VOID ARCHON", intro: "VOID ARCHON MANIFESTS",
+    timer: 14, need: 4, coreDelay: 1.1, coreLife: 5, spin: -1.15, ringMode: "alternating",
+    coreColor: "#b48cff", clearLabel: "ARCHON DISPERSED", failLabel: "ARCHON RETREATS" },
+];
+const DEFAULT_BOSS_PROFILE = {
+  name: "CORONA SURGE", intro: "CORONA SURGE!", timer: 14, need: 3,
+  coreDelay: 1.5, coreLife: 6, spin: 0.75, ringMode: "any",
+  coreColor: "#ffd45a", clearLabel: "SURGE CLEARED", failLabel: "SURGE FADED",
+};
+function campaignBossProfile(sectorId) {
+  const profile = CAMPAIGN_BOSS_PROFILES.find(item => item.sectorId === sectorId);
+  return { ...(profile || DEFAULT_BOSS_PROFILE) };
+}
 function bossWarningText(secondsRemaining, cores, need = 3) {
   if (!Number.isFinite(secondsRemaining) || secondsRemaining <= 0 ||
       !Number.isFinite(cores) || !Number.isFinite(need) || need < 1) return "";
@@ -217,6 +246,13 @@ function comboMilestoneText(combo) {
 function shouldRenderScreenFlash(settings = {}) {
   return settings.reducedMotion !== true;
 }
+function shouldApplyHitStop(settings = {}) {
+  return settings.reducedMotion !== true;
+}
+function campaignPauseHint(sectorId) {
+  const sector = CAMPAIGN_SECTORS.find(item => item.id === sectorId);
+  return sector ? `${sector.name} - ${sector.objective}` : "";
+}
 function segDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx * dx + dy * dy;
@@ -230,17 +266,28 @@ function segDist(px, py, x1, y1, x2, y2) {
 const CAMPAIGN_SECTORS = [
   { id: "sol-frontier", name: "SOL FRONTIER", subtitle: "THE FIRST BEACON", biome: "nebula",
     description: "A quiet frontier. An ancient beacon has begun transmitting again.",
-    objective: "Complete a run here to chart the frontier.", unlockAfter: null, position: [0.16, 0.22] },
+    objective: "Complete a run here to chart the frontier.", unlockAfter: null, position: [0.16, 0.30] },
   { id: "ember-reach", name: "EMBER REACH", subtitle: "SIGNAL IN THE FIRE", biome: "ember",
     description: "A red giant illuminates the last known route of a missing expedition.",
-    objective: "Complete Sol Frontier to open this route.", unlockAfter: "sol-frontier", position: [0.39, 0.36] },
+    objective: "Complete Sol Frontier to open this route.", unlockAfter: "sol-frontier", position: [0.39, 0.72] },
   { id: "silent-expanse", name: "THE SILENT EXPANSE", subtitle: "FROZEN ECHOES", biome: "ice",
     description: "Frozen stations drift beneath an atmosphere of blue ice and static.",
-    objective: "Complete Ember Reach to open this route.", unlockAfter: "ember-reach", position: [0.64, 0.19] },
+    objective: "Complete Ember Reach to open this route.", unlockAfter: "ember-reach", position: [0.64, 0.20] },
   { id: "void-crown", name: "THE VOID CROWN", subtitle: "EDGE OF THE UNKNOWN", biome: "void",
     description: "A dark anomaly bends starlight around the source of the signal.",
-    objective: "Complete the Silent Expanse to open this route.", unlockAfter: "silent-expanse", position: [0.83, 0.39] },
+    objective: "Complete the Silent Expanse to open this route.", unlockAfter: "silent-expanse", position: [0.83, 0.61] },
 ];
+
+// Convert normalized sector metadata into logical canvas coordinates.
+function campaignMapPoint(sector, width = W, top = 145, height = 500, padding = 42) {
+  const position = sector && sector.position;
+  if (!Array.isArray(position) || position.length < 2 ||
+      !Number.isFinite(position[0]) || !Number.isFinite(position[1])) return null;
+  return {
+    x: padding + position[0] * (width - padding * 2),
+    y: top + position[1] * height,
+  };
+}
 const STORY_ENTRIES = [
   { id: "beacon-awake", sectorId: "sol-frontier", title: "The Beacon Wakes", classification: "FIRST CONTACT",
     teaser: "A signal older than the frontier itself.", body: "The beacon did not wake by accident. Its repeating pulse predates every mapped station in Sol Frontier, yet its power source is still warm. Someone—or something—has been waiting for a receiver." },
@@ -251,6 +298,22 @@ const STORY_ENTRIES = [
   { id: "void-origin", sectorId: "void-crown", title: "The Signal's Origin", classification: "FRONTIER ARCHIVE",
     teaser: "The source lies beyond the mapped systems.", body: "At the edge of the Void Crown, the signal resolves into a navigational pattern. The four sectors are not separate destinations; together they form a route. The beacon was never a warning. It was a map." },
 ];
+
+// Summarize the existing discovery chain without adding a second save/progression system.
+function storySignalState(discoveries = []) {
+  const known = new Set(Array.isArray(discoveries) ? discoveries : []);
+  const recovered = STORY_ENTRIES.filter(entry => known.has(entry.id));
+  const next = STORY_ENTRIES.find(entry => !known.has(entry.id)) || null;
+  return {
+    recoveredCount: recovered.length,
+    total: STORY_ENTRIES.length,
+    recoveredIds: recovered.map(entry => entry.id),
+    nextEntryId: next ? next.id : null,
+    nextTitle: next ? next.title : "",
+    decoded: next === null,
+  };
+}
+
 const EXPLORATION_OBJECTIVES = [
   { id: "sol-signal", sectorId: "sol-frontier", title: "Trace the Beacon", detail: "Triangulate the repeating signal across the orbital debris.", reward: 20, color: "#78c8ff" },
   { id: "sol-wreckage", sectorId: "sol-frontier", title: "Survey the Wreckage", detail: "Scan a derelict relay drifting beyond the inner ring.", reward: 25, color: "#a7b8d8" },
@@ -265,6 +328,21 @@ const EXPLORATION_OBJECTIVES = [
   { id: "void-pattern", sectorId: "void-crown", title: "Decode the Pattern", detail: "Compare the anomaly's pulses with the beacon.", reward: 40, color: "#d9c4ff" },
   { id: "void-origin", sectorId: "void-crown", title: "Find the Source", detail: "Pinpoint the final coordinate in the signal map.", reward: 50, color: "#8dffce" },
 ];
+
+const PLANET_SURVEY_PROFILES = [
+  { sectorId: "sol-frontier", environment: "DUSTY NEBULA", hazard: "IONIZED DEBRIS",
+    focus: "TRACE THE ANCIENT BEACON", fieldNote: "Old relay fragments still echo the beacon pulse." },
+  { sectorId: "ember-reach", environment: "MAGNETIC ASH", hazard: "STELLAR SURGES",
+    focus: "RECOVER EXPEDITION TELEMETRY", fieldNote: "Red-giant storms can distort survey readings." },
+  { sectorId: "silent-expanse", environment: "SUBZERO STATIC", hazard: "ICE SHEAR",
+    focus: "ISOLATE THE REPEATING ECHO", fieldNote: "Frozen relays repeat a response from beneath the ice." },
+  { sectorId: "void-crown", environment: "GRAVITY LENSING", hazard: "SPACETIME DISTORTION",
+    focus: "ALIGN THE FOUR-PART SIGNAL", fieldNote: "Anomaly pulses match the beacon's navigational rhythm." },
+];
+function planetSurveyProfile(sectorId) {
+  return PLANET_SURVEY_PROFILES.find(profile => profile.sectorId === sectorId) || null;
+}
+
 const freshCampaign = () => ({ version: 3, completed: [], selected: "sol-frontier", discoveries: [], exploration: {
   "sol-frontier": [], "ember-reach": [], "silent-expanse": [], "void-crown": [],
 } });
@@ -2152,11 +2230,15 @@ class Game {
   // ---- Corona Surge -----------------------------------------------------
   startBoss() {
     if (this.boss) return;
-    this.boss = { timer: 14, need: 3, cores: 0, core: null, coreT: 1.5 };
+    const profile = campaignBossProfile(this.currentCampaignSector);
+    this.boss = {
+      ...profile, timer: profile.timer, need: profile.need, cores: 0, core: null,
+      coreT: profile.coreDelay, coreSpawns: 0,
+    };
     this.flareT = 0; this.flareRing = -1;
     this.flash = Math.max(this.flash, 0.35); this.hitStop = Math.max(this.hitStop, 0.06);
     this.shake = Math.max(this.shake, 0.35);
-    this.float(CX, CY - 160, "CORONA SURGE!", "#ff5a2a");
+    this.float(CX, CY - 160, profile.intro, profile.coreColor);
     Sfx.play("boss"); Sfx.noise(700, 0.16, 600);
   }
   updateBoss(dt) {
@@ -2164,13 +2246,21 @@ class Game {
     this.boss.timer -= dt;
     this.boss.coreT -= dt;
     if (!this.boss.core && this.boss.coreT <= 0 && this.boss.timer > 3) {
-      this.boss.core = { ring: this.rndInt(3), angle: this.rnd(0, TAU), life: 6 };
-      this.boss.coreT = 3.5;
+      let ring;
+      if (this.boss.ringMode === "outer") ring = 1 + this.rndInt(2);
+      else if (this.boss.ringMode === "inner") ring = this.rndInt(2);
+      else if (this.boss.ringMode === "alternating") ring = this.boss.coreSpawns % 2 === 0 ? 0 : 2;
+      else ring = this.rndInt(3);
+      this.boss.coreSpawns++;
+      this.boss.core = { ring, angle: this.rnd(0, TAU), life: this.boss.coreLife, color: this.boss.coreColor };
+      this.boss.coreT = this.boss.coreDelay;
     }
     if (this.boss.core) {
       this.boss.core.life -= dt;
-      this.boss.core.angle += 0.75 * dt;
-      if (this.boss.core.life <= 0) { this.boss.core = null; this.boss.coreT = 1; }
+      this.boss.core.angle += this.boss.spin * dt;
+      if (this.boss.core.life <= 0) {
+        this.boss.core = null; this.boss.coreT = this.boss.coreDelay;
+      }
     }
     if (this.boss.cores >= this.boss.need) this.clearBoss();
     else if (this.boss.timer <= 0) this.failBoss();
@@ -2183,13 +2273,16 @@ class Game {
     this.save.stats.bosses++; this.bossesCleared++;
     this.flash = Math.max(this.flash, 0.4); this.hitStop = Math.max(this.hitStop, 0.12);
     this.shake = Math.max(this.shake, 0.5);
-    this.float(CX, CY - 120, `SURGE CLEARED +${bonus}`, "#ffd45a");
+    const clearLabel = this.boss.clearLabel || "SURGE CLEARED";
+    const coreColor = this.boss.coreColor || "#ffd45a";
+    this.float(CX, CY - 120, `${clearLabel} +${bonus}`, coreColor);
     this.boss = null;
     Sfx.play("boss"); Sfx.noise(450, 0.16, 1200);
   }
   failBoss() {
     if (!this.boss) return;
-    this.float(CX, CY - 120, "SURGE FADED", "#9696aa");
+    const failLabel = this.boss.failLabel || "SURGE FADED";
+    this.float(CX, CY - 120, failLabel, "#9696aa");
     this.boss = null;
   }
 
@@ -2198,7 +2291,12 @@ class Game {
     this.time += dt; this.ads.update(dt);
     this.flash = Math.max(0, this.flash - dt);
     if (this.paused) return;
-    if (this.hitStop > 0) { this.hitStop = Math.max(0, this.hitStop - dt); return; }
+    if (this.hitStop > 0 && shouldApplyHitStop(this.save.settings)) {
+      this.hitStop = Math.max(0, this.hitStop - dt);
+      return;
+    }
+    // Reduced Motion skips the brief simulation freeze used for impact emphasis.
+    this.hitStop = 0;
     this.shake = Math.max(0, this.shake - dt);
     this.parts = this.parts.filter(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .96; p.vy *= .96; return (p.life -= dt) > 0; });
     this.floats = this.floats.filter(f => { f.y -= 50 * dt; return (f.life -= dt) > 0; });
@@ -2426,7 +2524,7 @@ class Game {
         this.float(gx, gy, `CORE +${pts}`, "#ffd45a");
         this.burst(gx, gy, ["#ffd45a", "#ff9a3c"], 30, 280, .7);
         Sfx.play("power"); vibrate(30);
-        this.boss.core = null; this.boss.coreT = 1;
+        this.boss.core = null; this.boss.coreT = this.boss.coreDelay;
         if (this.boss && this.boss.cores >= this.boss.need) this.clearBoss();
       }
     }
@@ -2547,26 +2645,50 @@ class Game {
         this.shopTab === id ? "#ffd45a" : "#55557a", () => { this.shopTab = id; });
     });
     const items = SHOP_ITEMS.filter(i => i.type === this.shopTab);
+    const preview = cosmeticPreviewItem(this.shopTab, this.shopPreviewId, this.save.cosmetics.equipped);
+    panel(c, 60, 230, W - 120, 86, "rgba(16,25,44,0.92)", "rgba(120,200,255,0.24)", 14);
+    text(c, "LIVE PREVIEW", 78, 252, 11, "#7fa7c8", true, "left");
+    if (preview) {
+      text(c, preview.name, 78, 282, 18, "#e8eef8", true, "left");
+      if (preview.type === "skin") {
+        const livery = SKIN_LIVERIES[preview.value] || SKIN_LIVERIES.scout;
+        drawAircraft(c, W - 160, 270, -Math.PI / 2, livery, this.time, 0);
+      } else if (preview.type === "trail") {
+        c.globalAlpha = 0.28;
+        c.strokeStyle = preview.value; c.lineWidth = 14;
+        c.beginPath(); c.moveTo(W - 260, 270); c.lineTo(W - 130, 270); c.stroke();
+        c.globalAlpha = 1;
+        for (let i = 0; i < 5; i++) circle(c, W - 250 + i * 24, 270, 4 + (i % 2) * 2, preview.value);
+      } else {
+        text(c, preview.value, W - 170, 270, 18, "#b48cff", true);
+      }
+      const equipped = this.save.cosmetics.equipped[preview.type] === preview.id;
+      text(c, equipped ? "CURRENTLY EQUIPPED" :
+        this.save.cosmetics.owned.includes(preview.id) ? "OWNED — READY TO EQUIP" :
+        `COST  ${preview.cost} CRYSTALS`,
+        W - 78, 297, 10, equipped ? "#78ff8c" : "#9aa6c0", true, "right");
+    }
     items.forEach((item, i) => {
-      const y = 252 + i * 104;
+      const y = 330 + i * 100;
       const owned = this.save.cosmetics.owned.includes(item.id);
       const equipped = this.save.cosmetics.equipped[item.type] === item.id;
-      panel(c, 60, y, W - 120, 88,
-        equipped ? "rgba(120,255,140,0.08)" : "rgba(255,255,255,0.035)",
-        equipped ? "rgba(120,255,140,0.45)" : "rgba(255,255,255,0.07)", 14);
-      text(c, item.name, 82, y + 30, 20, equipped ? "#78ff8c" : "#e8eef8", true, "left");
+      const selected = preview && preview.id === item.id;
+      panel(c, 60, y, W - 120, 86,
+        equipped ? "rgba(120,255,140,0.08)" : selected ? "rgba(120,200,255,0.08)" : "rgba(255,255,255,0.035)",
+        equipped ? "rgba(120,255,140,0.45)" : selected ? "rgba(120,200,255,0.55)" : "rgba(255,255,255,0.07)", 14);
+      text(c, item.name, 82, y + 28, 19, equipped ? "#78ff8c" : "#e8eef8", true, "left");
       const status = equipped ? "EQUIPPED" : owned ? "OWNED" : `${item.cost} CRYSTALS`;
-      text(c, status, 82, y + 60, 14, equipped ? "#78ff8c" : owned ? "#9696aa" : "#ffd45a", false, "left");
+      text(c, status, 82, y + 56, 13, equipped ? "#78ff8c" : owned ? "#9696aa" : "#ffd45a", false, "left");
       this.smallButton(c, equipped ? "ACTIVE" : owned ? "EQUIP" : "BUY",
-        W - 250, y + 22, 170, 44, equipped ? "#78ff8c" : owned ? "#78c8ff" : "#ffd45a",
+        W - 250, y + 20, 170, 44, equipped ? "#78ff8c" : owned ? "#78c8ff" : "#ffd45a",
         () => this.buyOrEquip(item));
-      if (item.type === "trail") {
-        circle(c, W - 300, y + 44, 9, item.value);
-      }
+      if (item.type === "trail") circle(c, W - 300, y + 43, 9, item.value);
+      // Row selection is registered after the action button so BUY/EQUIP remains clickable.
+      this.buttons.push({ x: 60, y, w: W - 120, h: 86, fn: () => { this.shopPreviewId = item.id; } });
     });
-    if (this.shopMessage) text(c, this.shopMessage, W / 2, 820, 18, "#ffd45a");
-    this.button(c, "BACK", 850, "#c8c8dc", () => this.goTitle(), 72);
-    text(c, "1/2/3 tabs - B / ESC back", W / 2, 960, 17, "#828296");
+    if (this.shopMessage) text(c, this.shopMessage, W / 2, 890, 16, "#ffd45a");
+    this.button(c, "BACK", 950, "#c8c8dc", () => this.goTitle(), 62);
+    text(c, "SELECT AN ITEM TO PREVIEW  •  BUY / EQUIP TO APPLY  •  B / ESC BACK", W / 2, 1035, 13, "#828296");
   }
 
   drawSpace(c, ox = 0, oy = 0) {
@@ -2715,9 +2837,10 @@ class Game {
       const core = this.boss.core;
       const gx = CX + Math.cos(core.angle) * RINGS[core.ring] + ox;
       const gy = CY + Math.sin(core.angle) * RINGS[core.ring] + oy;
-      circle(c, gx, gy, 26 + 4 * Math.sin(this.time * 8), "#ffd45a33");
+      const coreColor = core.color || "#ffd45a";
+      circle(c, gx, gy, 26 + 4 * Math.sin(this.time * 8), coreColor + "33");
       circle(c, gx, gy, 18, "#0c0a14");
-      circle(c, gx, gy, 18, "#ffd45a", 4);
+      circle(c, gx, gy, 18, coreColor, 4);
       text(c, "C", gx, gy + 1, 20, "#ffd45a", true);
     }
 
@@ -2915,10 +3038,11 @@ class Game {
     if (this.boss) {
       const surgeRemaining = Math.max(0, this.boss.timer);
       const surgeUrgent = surgeRemaining <= 4;
+      const bossColor = this.boss.coreColor || "#ff8a4a";
       panel(c, W / 2 - 160, 154, 320, 58, "rgba(30,10,6,0.84)",
-        surgeUrgent ? "rgba(255,220,120,0.95)" : "rgba(255,106,60,0.65)", 10);
-      text(c, `CORONA SURGE  ${this.boss.cores}/${this.boss.need}`,
-        W / 2, 169, 18, "#ffb06a", true);
+        surgeUrgent ? "rgba(255,220,120,0.95)" : bossColor, 10);
+      text(c, `${this.boss.name || "CORONA SURGE"}  ${this.boss.cores}/${this.boss.need}`,
+        W / 2, 169, 16, bossColor, true);
       text(c, bossWarningText(surgeRemaining, this.boss.cores, this.boss.need),
         W / 2, 188, 13, surgeUrgent ? "#fff0a8" : "#f2e8dc", true);
       c.fillStyle = "rgba(255,255,255,0.16)";
@@ -2944,67 +3068,113 @@ class Game {
   }
 
   drawCampaignMap(c) {
-    c.fillStyle = "rgba(2, 5, 16, 0.97)"; c.fillRect(0, 0, W, H);
-    for (let i = 0; i < 70; i++) {
+    c.fillStyle = "rgba(2, 5, 16, 0.98)"; c.fillRect(0, 0, W, H);
+    // Stable star positions with subtle twinkle; no random gameplay state is introduced.
+    for (let i = 0; i < 96; i++) {
       const x = (i * 137 + 41) % W, y = (i * 211 + 19) % H;
-      circle(c, x, y, i % 9 === 0 ? 2 : 1, i % 3 === 0 ? "rgba(120,200,255,0.6)" : "rgba(210,225,255,0.38)");
+      const alpha = 0.18 + 0.34 * (0.5 + 0.5 * Math.sin(this.time * 0.7 + i * 1.7));
+      circle(c, x, y, i % 11 === 0 ? 2 : 1,
+        i % 3 === 0 ? `rgba(120,200,255,${alpha})` : `rgba(210,225,255,${alpha})`);
     }
-    text(c, "THE LOST SYSTEMS", W / 2, 68, 34, "#d9edff", true);
-    text(c, "SECTOR NAVIGATION  /  SELECT A DESTINATION", W / 2, 108, 14, "#7fa7c8", true);
-    c.strokeStyle = "rgba(95, 166, 220, 0.55)"; c.lineWidth = 3; c.beginPath();
+    if (typeof c.createRadialGradient === "function") {
+      const nebula = c.createRadialGradient(W * 0.52, 390, 20, W * 0.52, 390, 390);
+      nebula.addColorStop(0, "rgba(50, 95, 155, 0.16)");
+      nebula.addColorStop(1, "rgba(5, 12, 30, 0)");
+      c.fillStyle = nebula; c.fillRect(0, 130, W, 540);
+    }
+    text(c, "THE LOST SYSTEMS", W / 2, 58, 32, "#d9edff", true);
+    text(c, "GALACTIC CHART  /  SELECT A DESTINATION", W / 2, 94, 13, "#7fa7c8", true);
+
+    const points = CAMPAIGN_SECTORS.map(sector => campaignMapPoint(sector));
+    // Draw routes behind the planets. Locked routes are dashed and charted routes glow.
+    for (let i = 1; i < CAMPAIGN_SECTORS.length; i++) {
+      const sector = CAMPAIGN_SECTORS[i], previous = CAMPAIGN_SECTORS[i - 1];
+      const a = points[i - 1], b = points[i];
+      if (!a || !b) continue;
+      const unlocked = this.campaignUnlocked(sector);
+      const completed = this.save.campaign.completed.includes(previous.id);
+      c.save();
+      if (c.setLineDash) c.setLineDash(unlocked ? [] : [7, 9]);
+      c.strokeStyle = completed ? "rgba(141,255,206,0.82)" :
+        unlocked ? "rgba(120,220,255,0.78)" : "rgba(103,133,164,0.45)";
+      c.lineWidth = unlocked ? 3 : 2;
+      c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+      if (c.setLineDash) c.setLineDash([]);
+      const pulse = (this.time * 0.12 + i * 0.22) % 1;
+      circle(c, a.x + (b.x - a.x) * pulse, a.y + (b.y - a.y) * pulse,
+        3, unlocked ? "#a8e9ff" : "rgba(130,150,175,0.65)");
+      c.restore();
+    }
+
     CAMPAIGN_SECTORS.forEach((sector, i) => {
-      const x = 104, y = 218 + i * 210;
-      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
-    });
-    c.stroke();
-    CAMPAIGN_SECTORS.forEach((sector, i) => {
-      const x = 38, y = 150 + i * 210, w = W - 76, h = 178;
+      const point = points[i];
+      if (!point) return;
       const selected = sector.id === this.campaignSelectedSector;
       const unlocked = this.campaignUnlocked(sector);
       const completed = this.save.campaign.completed.includes(sector.id);
-      panel(c, x, y, w, h,
-        selected ? "rgba(16, 36, 58, 0.94)" : "rgba(7, 15, 31, 0.88)",
-        selected ? "rgba(120, 220, 255, 0.9)" : "rgba(120, 170, 210, 0.24)", 16);
-      const px = 104, py = y + 68, pr = 27;
-      if (typeof c.createRadialGradient === "function") {
-        const glow = c.createRadialGradient(px, py, 2, px, py, 47);
-        glow.addColorStop(0, sector.biome === "ember" ? "rgba(255,125,70,0.9)" :
-          sector.biome === "ice" ? "rgba(110,225,255,0.9)" :
-          sector.biome === "void" ? "rgba(160,120,255,0.9)" : "rgba(100,180,255,0.9)");
-        glow.addColorStop(1, "rgba(0,0,0,0)");
-        c.fillStyle = glow; c.fillRect(px - 48, py - 48, 96, 96);
-      }
+      const mastery = this.sectorMastery(sector.id);
+      const px = point.x, py = point.y;
       const planetCol = sector.biome === "ember" ? "#ff874f" : sector.biome === "ice" ? "#8deaff" :
         sector.biome === "void" ? "#a18bff" : "#78c8ff";
-      circle(c, px, py, pr, planetCol);
-      circle(c, px - 8, py - 8, 10, "rgba(255,255,255,0.28)");
-      c.strokeStyle = "rgba(210,230,255,0.55)"; c.lineWidth = 2; c.beginPath();
-      c.ellipse(px, py, pr + 13, 8, -0.24, 0, TAU); c.stroke();
-      const titleCol = unlocked ? "#e6f3ff" : "#718096";
-      text(c, `${i + 1}. ${sector.name}`, 153, y + 36, 20, titleCol, true, "left");
-      text(c, sector.subtitle, 153, y + 62, 12, unlocked ? "#80d8ff" : "#65738a", true, "left");
-      text(c, sector.description, 153, y + 94, 13, "#b8c6d9", false, "left");
-      const mastery = this.sectorMastery(sector.id);
-      text(c, mastery.mastered ? "SECTOR MASTERED" : completed ? "SECTOR CHARTED" : unlocked ? "ROUTE AVAILABLE" : "ROUTE LOCKED",
-        153, y + 126, 13, mastery.mastered ? "#8dffce" : completed ? "#a5c9e8" : unlocked ? "#80d8ff" : "#768096", true, "left");
-      text(c, "SURVEYS " + mastery.completedObjectives + "/" + mastery.totalObjectives + "  •  " + sector.biome.toUpperCase(),
-        153, y + 151, 11, mastery.mastered ? "#8dffce" : "#778aa4", false, "left");
-      this.buttons.push({ x, y, w, h, fn: () => this.selectCampaignSector(sector.id) });
+      const glowRadius = selected ? 58 + 4 * Math.sin(this.time * 2.4) : 46;
+      if (typeof c.createRadialGradient === "function") {
+        const glow = c.createRadialGradient(px, py, 2, px, py, glowRadius);
+        glow.addColorStop(0, selected ? "rgba(120,220,255,0.38)" : "rgba(100,180,255,0.22)");
+        glow.addColorStop(1, "rgba(0,0,0,0)");
+        c.fillStyle = glow; c.fillRect(px - glowRadius, py - glowRadius, glowRadius * 2, glowRadius * 2);
+      }
+      if (selected) circle(c, px, py, 36 + 3 * Math.sin(this.time * 2.4), "rgba(120,220,255,0.12)", 2);
+      if (completed) circle(c, px, py, 33, "rgba(141,255,206,0.78)", 2);
+      circle(c, px, py, 25, unlocked ? planetCol : "#3b4b62");
+      circle(c, px - 7, py - 8, 9, unlocked ? "rgba(255,255,255,0.34)" : "rgba(220,230,245,0.12)");
+      c.strokeStyle = unlocked ? "rgba(210,230,255,0.72)" : "rgba(130,148,170,0.42)";
+      c.lineWidth = 2; c.beginPath(); c.ellipse(px, py, 34, 9, -0.24, 0, TAU); c.stroke();
+
+      const labelY = sector.position[1] < 0.46 ? py + 54 : py - 43;
+      const labelCol = unlocked ? "#e6f3ff" : "#718096";
+      text(c, sector.name, px, labelY, 13, labelCol, true);
+      text(c, completed ? "CHARTED" : unlocked ? "AVAILABLE" : "LOCKED",
+        px, labelY + 17, 10, completed ? "#8dffce" : unlocked ? "#80d8ff" : "#718096", true);
+      this.buttons.push({
+        x: px - 54, y: py - 52, w: 108, h: 104,
+        fn: () => this.selectCampaignSector(sector.id),
+      });
+      if (mastery.mastered) {
+        circle(c, px + 27, py - 24, 8, "#8dffce");
+        text(c, "✓", px + 27, py - 24, 10, "#07131d", true);
+      }
     });
+
     const selected = this.campaignSector(this.campaignSelectedSector) || CAMPAIGN_SECTORS[0];
     const unlocked = this.campaignUnlocked(selected);
+    const mastery = this.sectorMastery(selected.id);
+    panel(c, 34, 650, W - 68, 252, "rgba(7, 18, 35, 0.92)", "rgba(120,220,255,0.62)", 16);
+    text(c, selected.name, 56, 684, 20, "#e6f3ff", true, "left");
+    text(c, selected.subtitle, 56, 710, 11, unlocked ? "#80d8ff" : "#718096", true, "left");
+    text(c, selected.description, 56, 746, 12, "#b8c6d9", false, "left");
+    text(c, "OBJECTIVE  /  " + selected.objective, 56, 781, 11, "#a8c8e3", false, "left");
+    text(c, mastery.mastered ? "SECTOR MASTERED" :
+      this.save.campaign.completed.includes(selected.id) ? "SECTOR CHARTED" :
+      unlocked ? "ROUTE AVAILABLE" : "ROUTE LOCKED — COMPLETE THE PREVIOUS SECTOR",
+      56, 822, 12, mastery.mastered ? "#8dffce" : unlocked ? "#80d8ff" : "#9aa7ba", true, "left");
+    text(c, "SURVEYS " + mastery.completedObjectives + "/" + mastery.totalObjectives +
+      "  •  " + selected.biome.toUpperCase(), 56, 852, 11, "#778aa4", false, "left");
+    text(c, "SECTOR " + (CAMPAIGN_SECTORS.findIndex(s => s.id === selected.id) + 1) +
+      " / " + CAMPAIGN_SECTORS.length, W - 56, 684, 10, "#7fa7c8", true, "right");
+
     this.smallButton(c, unlocked ? "LAUNCH SECTOR" : "SECTOR LOCKED",
-      38, 1005, 300, 64, unlocked ? "#ffd783" : "#6e778b",
+      38, 925, 300, 62, unlocked ? "#ffd783" : "#6e778b",
       () => this.launchCampaignSector(selected.id));
     this.smallButton(c, unlocked ? "EXPLORE PLANET" : "EXPLORE LOCKED",
-      350, 1005, 332, 64, unlocked ? "#78c8ff" : "#6e778b",
+      350, 925, 332, 62, unlocked ? "#78c8ff" : "#6e778b",
       () => this.openPlanetExplore(selected.id));
-    this.smallButton(c, "STORY ARCHIVE", 52, 1080, 270, 56, "#b48cff", () => this.openStoryArchive("campaign"));
-    this.smallButton(c, "BACK TO TITLE", 340, 1080, 328, 56, "#83bfe9", () => this.goTitle());
+    this.smallButton(c, "STORY ARCHIVE", 52, 1000, 270, 54, "#b48cff", () => this.openStoryArchive("campaign"));
+    this.smallButton(c, "BACK TO TITLE", 340, 1000, 328, 54, "#83bfe9", () => this.goTitle());
     const progress = this.campaignMastery();
-    text(c, this.campaignMessage || ("SECTORS MASTERED " + progress.masteredSectors + "/4  •  OPTIONAL SURVEYS " +
-      progress.completedObjectives + "/" + progress.totalObjectives), W / 2, 1168, 13, "#9bb6ce", false);
-    text(c, "UP / DOWN SELECT  •  ENTER LAUNCH  •  L ARCHIVE  •  ESC BACK", W / 2, 1214, 12, "#607994");
+    text(c, this.campaignMessage || ("SECTORS MASTERED " + progress.masteredSectors + "/" + CAMPAIGN_SECTORS.length +
+      "  •  OPTIONAL SURVEYS " + progress.completedObjectives + "/" + progress.totalObjectives),
+      W / 2, 1092, 12, "#9bb6ce", false);
+    text(c, "UP / DOWN SELECT  •  ENTER LAUNCH  •  L ARCHIVE  •  ESC BACK", W / 2, 1140, 11, "#607994");
   }
 
   drawCampaignEnding(c) {
@@ -3084,10 +3254,18 @@ class Game {
     c.beginPath(); c.ellipse(px, py + 12, radius + 28, 34, -0.18, 0, TAU); c.stroke();
     circle(c, px + 158, py - 16, 10, "#e6f7ff");
     circle(c, px + 158, py - 16, 22, "rgba(120,220,255,0.16)");
-    text(c, "SURVEY PROGRESS  " + done + " / " + objectives.length, W / 2, 442, 15, "#b9d7ed", true);
+    const profile = planetSurveyProfile(sector.id);
+    if (profile) {
+      panel(c, 34, 414, W - 68, 48, "rgba(8,18,35,0.9)", "rgba(120,190,230,0.32)", 10);
+      text(c, profile.environment, 50, 432, 10, "#8deaff", true, "left");
+      text(c, "RISK  /  " + profile.hazard, W / 2, 432, 10, "#ffd783", true);
+      text(c, profile.focus, W - 50, 432, 10, "#b48cff", true, "right");
+      text(c, profile.fieldNote, W / 2, 451, 10, "#8aa6c1", false);
+    }
+    text(c, "SURVEY PROGRESS  " + done + " / " + objectives.length, W / 2, 482, 14, "#b9d7ed", true);
     objectives.forEach((objective, i) => {
-      const y = 482 + i * 164, completed = this.explorationDone(objective, sector.id);
-      panel(c, 36, y, W - 72, 144, completed ? "rgba(12,42,43,0.9)" : "rgba(8,16,32,0.94)",
+      const y = 508 + i * 158, completed = this.explorationDone(objective, sector.id);
+      panel(c, 36, y, W - 72, 140, completed ? "rgba(12,42,43,0.9)" : "rgba(8,16,32,0.94)",
         completed ? "rgba(141,255,206,0.65)" : "rgba(120,190,230,0.28)", 14);
       circle(c, 70, y + 39, 13, completed ? "#8dffce" : objective.color);
       text(c, completed ? "DATA SECURED" : "SURVEY " + (i + 1), 98, y + 28, 11,
@@ -3095,7 +3273,7 @@ class Game {
       text(c, objective.title, 58, y + 59, 19, "#e6f3ff", true, "left");
       text(c, objective.detail, 58, y + 85, 12, "#9fb3cc", false, "left");
       this.smallButton(c, completed ? "COMPLETE" : "SCAN",
-        500, y + 96, 158, 34, completed ? "#477f76" : objective.color,
+        500, y + 92, 158, 34, completed ? "#477f76" : objective.color,
         () => this.completeExplorationObjective(objective.id));
       text(c, "REWARD  +" + objective.reward + " CRYSTALS", 58, y + 119, 11, "#8dffce", true, "left");
     });
@@ -3112,36 +3290,48 @@ class Game {
     c.fillStyle = "rgba(2, 5, 16, 0.98)"; c.fillRect(0, 0, W, H);
     for (let i = 0; i < 64; i++) {
       const x = (i * 173 + 23) % W, y = (i * 127 + 61) % H;
-      circle(c, x, y, i % 8 === 0 ? 2 : 1, i % 3 === 0 ? "rgba(180,140,255,0.62)" : "rgba(210,225,255,0.30)");
+      const alpha = 0.20 + 0.22 * (0.5 + 0.5 * Math.sin(this.time * 0.6 + i));
+      circle(c, x, y, i % 8 === 0 ? 2 : 1,
+        i % 3 === 0 ? `rgba(180,140,255,${alpha})` : `rgba(210,225,255,${alpha})`);
     }
-    const found = this.save.campaign.discoveries.length;
-    text(c, "FRONTIER ARCHIVE", W / 2, 62, 34, "#e4d9ff", true);
-    text(c, `RECOVERED INTEL  /  ${found} OF ${STORY_ENTRIES.length} RECORDS`, W / 2, 101, 14, "#9e91c7", true);
+    const signal = storySignalState(this.save.campaign.discoveries);
+    text(c, "FRONTIER ARCHIVE", W / 2, 58, 34, "#e4d9ff", true);
+    text(c, `RECOVERED INTEL  /  ${signal.recoveredCount} OF ${signal.total} RECORDS`, W / 2, 99, 14, "#9e91c7", true);
+
+    panel(c, 38, 119, W - 76, 62, "rgba(24, 17, 48, 0.88)", "rgba(180,140,255,0.42)", 12);
+    text(c, "SIGNAL CHAIN", 54, 142, 11, "#c7b5ff", true, "left");
+    text(c, signal.decoded ? "ROUTE DECODED" : `NEXT LEAD  /  ${signal.nextTitle}`,
+      W - 54, 142, 12, signal.decoded ? "#8dffce" : "#e4d9ff", true, "right");
+    c.fillStyle = "rgba(100,85,140,0.45)"; c.fillRect(54, 154, W - 108, 7);
+    c.fillStyle = signal.decoded ? "#8dffce" : "#b48cff";
+    c.fillRect(54, 154, (W - 108) * (signal.recoveredCount / Math.max(1, signal.total)), 7);
+
     STORY_ENTRIES.forEach((entry, i) => {
-      const y = 132 + i * 218, unlocked = this.storyDiscovered(entry);
+      const y = 196 + i * 195, unlocked = this.storyDiscovered(entry);
       const selected = this.storySelectedId === entry.id;
-      panel(c, 38, y, W - 76, 194,
+      panel(c, 38, y, W - 76, 170,
         selected ? "rgba(38, 25, 66, 0.88)" : "rgba(9, 12, 28, 0.88)",
         selected ? "rgba(180, 140, 255, 0.78)" : "rgba(150, 140, 190, 0.22)", 14);
-      text(c, unlocked ? entry.classification : "ENCRYPTED RECORD", 60, y + 27, 12,
-        unlocked ? "#bba0ff" : "#6b6682", true, "left");
-      text(c, unlocked ? entry.title : `RECORD ${String(i + 1).padStart(2, "0")}  /  LOCKED`, 60, y + 57, 20,
-        unlocked ? "#f0eaff" : "#8a849d", true, "left");
+      text(c, unlocked ? entry.classification : `FRAGMENT ${String(i + 1).padStart(2, "0")}  /  ENCRYPTED`,
+        60, y + 25, 11, unlocked ? "#bba0ff" : "#6b6682", true, "left");
+      text(c, unlocked ? entry.title : `RECORD ${String(i + 1).padStart(2, "0")}  /  LOCKED`,
+        60, y + 52, 19, unlocked ? "#f0eaff" : "#8a849d", true, "left");
       const lines = unlocked ? entry.body : entry.teaser;
       const words = lines.split(" ");
-      let line = "", lineY = y + 88, count = 0;
+      let line = "", lineY = y + 81, count = 0;
       for (const word of words) {
         const nextLine = line ? line + " " + word : word;
         if (nextLine.length > 67 && line) {
-          text(c, line, 60, lineY, 14, unlocked ? "#c5c8dc" : "#77748a", false, "left");
-          line = word; lineY += 23; count++;
+          text(c, line, 60, lineY, 13, unlocked ? "#c5c8dc" : "#77748a", false, "left");
+          line = word; lineY += 21; count++;
           if (count >= 3) break;
         } else line = nextLine;
       }
-      if (line && count < 3) text(c, line, 60, lineY, 14, unlocked ? "#c5c8dc" : "#77748a", false, "left");
-      text(c, unlocked ? "RECOVERED" : `COMPLETE ${CAMPAIGN_SECTORS[i].name} TO DECRYPT`, W - 58, y + 169, 11,
-        unlocked ? "#8dffce" : "#6e778b", true, "right");
-      this.buttons.push({ x: 38, y, w: W - 76, h: 194, fn: () => { this.storySelectedId = entry.id; } });
+      if (line && count < 3) text(c, line, 60, lineY, 13, unlocked ? "#c5c8dc" : "#77748a", false, "left");
+      text(c, unlocked ? (i < STORY_ENTRIES.length - 1 ? "SIGNAL POINTS TO THE NEXT SECTOR" : "ALL SIGNAL FRAGMENTS CONNECTED")
+        : `COMPLETE ${CAMPAIGN_SECTORS[i].name} TO DECRYPT`,
+        W - 58, y + 151, 10, unlocked ? "#8dffce" : "#6e778b", true, "right");
+      this.buttons.push({ x: 38, y, w: W - 76, h: 170, fn: () => { this.storySelectedId = entry.id; } });
     });
     this.smallButton(c, "BACK", 52, 1024, 270, 60, "#b48cff", () => this.closeStoryArchive());
     this.smallButton(c, this.storyReturnState === "campaign" ? "BACK TO STAR MAP" : "OPEN STAR MAP",
@@ -3420,10 +3610,14 @@ class Game {
       W / 2, 380, 18, "#9696aa");
     text(c, `${this.mode === "daily" ? "DAILY" : this.mode === "ranked" ? `RANKED ${this.rankedWeek}` : this.contract.name} - ${this.ship.name}`,
       W / 2, 414, 18, "#78c8ff");
-    this.button(c, "Resume", 470, "#78ff8c", () => this.togglePause(), 96);
-    this.button(c, "Restart", 598, "#c8c8dc", () => this.beginMode(this.mode), 96);
-    this.button(c, "Title", 726, "#c8c8dc", () => this.goTitle(), 96);
-    this.button(c, this.save.muted ? "Settings (muted)" : "Settings", 854,
+    const campaignHint = campaignPauseHint(this.currentCampaignSector);
+    if (campaignHint) text(c, campaignHint, W / 2, 446, 15, "#ffd783");
+    // Reserve space for the campaign objective so it cannot overlap Resume.
+    const pauseButtonOffset = campaignHint ? 48 : 0;
+    this.button(c, "Resume", 470 + pauseButtonOffset, "#78ff8c", () => this.togglePause(), 96);
+    this.button(c, "Restart", 598 + pauseButtonOffset, "#c8c8dc", () => this.beginMode(this.mode), 96);
+    this.button(c, "Title", 726 + pauseButtonOffset, "#c8c8dc", () => this.goTitle(), 96);
+    this.button(c, this.save.muted ? "Settings (muted)" : "Settings", 854 + pauseButtonOffset,
       this.save.muted ? "#ff8a8a" : "#78e6ff", () => this.openSettings(), 84);
     text(c, "P / SPACE resume - R restart - T title - O settings - M mute", W / 2, 1010, 18, "#828296");
   }
@@ -3539,5 +3733,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
