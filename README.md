@@ -103,7 +103,7 @@ with the tutorial and does not change daily or ranked challenge rules.
   shared schema makes campaign progress portable for future import/export tooling but
   does not automatically sync files between devices.
 
-### Realism pass
+- The story archive presents the existing sector discoveries as one signal chain, with a recovery meter and the next unrecovered lead. It reuses the campaign discovery IDs and does not add a separate save format.\n\n### Realism pass
 
 - **Orbital motion:** inner rings orbit faster (Kepler-style), reversing has
   angular inertia, and ring changes use a spring-damper radial move.
