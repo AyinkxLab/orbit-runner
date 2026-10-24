@@ -65,6 +65,12 @@ meta-progression.
 - **Juice:** hit-stop, screen flash, power-up trails, combo sound tiers, a subtle
   procedural beat, and auto-pause when the window loses focus.
 
+### Core gameplay first-run pacing
+
+The first classic tutorial run uses a gentler meteor cadence and speed to help new
+players learn ring movement, reversing, crystals and flare cues. This assist ends
+with the tutorial and does not change daily or ranked challenge rules.
+
 ### Living-universe campaign
 
 - The web campaign includes a four-sector star map, story archive, optional planetary
