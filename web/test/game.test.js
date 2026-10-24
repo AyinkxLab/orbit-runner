@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, cosmeticPreviewItem } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -409,6 +409,16 @@ test("volatile meteors explode and clear nearby rocks", () => {
   g.update(0.01);
   assert.equal(bomb.dead, true);
   assert.equal(other.dead, true);
+});
+
+test("cosmetic preview selects the requested item without changing equipped state", () => {
+  const equipped = { trail: "trail_default", skin: "skin_scout", title: "title_rookie" };
+  const selected = cosmeticPreviewItem("skin", "skin_stealth", equipped);
+  assert.equal(selected.id, "skin_stealth");
+  assert.equal(equipped.skin, "skin_scout");
+  assert.equal(cosmeticPreviewItem("trail", "unknown-item", equipped).id, "trail_default");
+  assert.equal(cosmeticPreviewItem("title", null, equipped).id, "title_rookie");
+  assert.equal(cosmeticPreviewItem("unknown", null, equipped), null);
 });
 
 test("biomes drive speed, score and crystal rates", () => {
