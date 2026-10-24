@@ -65,6 +65,21 @@ meta-progression.
 - **Juice:** hit-stop, screen flash, power-up trails, combo sound tiers, a subtle
   procedural beat, and auto-pause when the window loses focus.
 
+### Living-universe campaign
+
+- The web campaign includes a four-sector star map, story archive, optional planetary
+  surveys, sector mastery, and a campaign ending.
+- The desktop/Pygame build now reads and writes the same versioned campaign progress
+  shape as the web save: completed sectors, selected sector, story discoveries, and
+  optional survey IDs. Desktop campaign runs use the matching sector biome and record
+  the sector/story when the run ends.
+- Desktop campaign map controls: press `C` from the title screen, use `Left`/`Right`
+  to select a sector, `Space` to launch an unlocked sector, and `B` to return.
+- Existing desktop saves are migrated safely; unknown sector/objective IDs and
+  out-of-order completions are discarded. Saves remain local to each platform; this
+  shared schema makes campaign progress portable for future import/export tooling but
+  does not automatically sync files between devices.
+
 ### Realism pass
 
 - **Orbital motion:** inner rings orbit faster (Kepler-style), reversing has

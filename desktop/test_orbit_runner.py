@@ -122,6 +122,53 @@ class OrbitRunnerTests(unittest.TestCase):
             json.dump({"best": 3850, "bank": 70, "muted": False}, f)
         self.assertEqual(orr.load_save()["lifetime"], 385)
 
+    def test_campaign_save_schema_migrates_and_validates_progress(self):
+        with open(orr.SAVE_FILE, "w") as f:
+            json.dump({"campaign": {
+                "version": 1,
+                "completed": ["sol-frontier", "silent-expanse", "void-crown", "unknown"],
+                "selected": "silent-expanse",
+                "discoveries": ["void-origin", "bad-entry"],
+                "exploration": {"sol-frontier": ["sol-signal", "unknown"]}
+            }}, f)
+        loaded = orr.load_save()
+        campaign = loaded["campaign"]
+        self.assertEqual(campaign["version"], 3)
+        self.assertEqual(campaign["completed"], ["sol-frontier"])
+        self.assertEqual(campaign["selected"], "silent-expanse")
+        self.assertEqual(campaign["discoveries"], ["beacon-awake"])
+        self.assertEqual(campaign["exploration"]["sol-frontier"], ["sol-signal"])
+        self.assertEqual(sum(len(v) for v in campaign["exploration"].values()), 1)
+
+    def test_desktop_campaign_map_launches_sector_and_records_story(self):
+        g = self.game
+        g.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_c))
+        self.assertEqual(g.state, g.CAMPAIGN)
+        g.handle(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_SPACE))
+        self.assertEqual(g.state, g.PLAY)
+        self.assertEqual(g.mode, "campaign")
+        self.assertEqual(g.current_campaign_sector, "sol-frontier")
+        self.assertEqual(g.biome["id"], "nebula")
+        g.die()
+        self.assertEqual(g.save["campaign"]["completed"], ["sol-frontier"])
+        self.assertEqual(g.save["campaign"]["discoveries"], ["beacon-awake"])
+
+    def test_desktop_campaign_respects_unlock_order_and_replay(self):
+        g = self.game
+        g.save["campaign"]["selected"] = "ember-reach"
+        g.start_run("campaign", "ember-reach")
+        self.assertEqual(g.state, g.TITLE)
+        self.assertEqual(g.current_campaign_sector, None)
+        g.save["campaign"]["completed"] = ["sol-frontier"]
+        g.start_run("campaign", "ember-reach")
+        self.assertEqual(g.state, g.PLAY)
+        self.assertEqual(g.biome["id"], "ember")
+        g.die()
+        self.assertEqual(g.save["campaign"]["completed"], ["sol-frontier", "ember-reach"])
+        g.start_run("campaign")
+        self.assertEqual(g.state, g.PLAY)
+        self.assertEqual(g.current_campaign_sector, "ember-reach")
+
     # ---- mechanics --------------------------------------------------------
     def test_combo_decays(self):
         g = self.game
