@@ -185,11 +185,13 @@ function comboMilestoneText(combo) {
 function shouldRenderScreenFlash(settings = {}) {
   return settings.reducedMotion !== true;
 }
+function shouldApplyHitStop(settings = {}) {
+  return settings.reducedMotion !== true;
+}
 function campaignPauseHint(sectorId) {
   const sector = CAMPAIGN_SECTORS.find(item => item.id === sectorId);
-  return sector ? `${sector.name} — ${sector.objective}` : "";
+  return sector ? `${sector.name} - ${sector.objective}` : "";
 }
-
 function segDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx * dx + dy * dy;
@@ -2163,7 +2165,12 @@ class Game {
     this.time += dt; this.ads.update(dt);
     this.flash = Math.max(0, this.flash - dt);
     if (this.paused) return;
-    if (this.hitStop > 0) { this.hitStop = Math.max(0, this.hitStop - dt); return; }
+    if (this.hitStop > 0 && shouldApplyHitStop(this.save.settings)) {
+      this.hitStop = Math.max(0, this.hitStop - dt);
+      return;
+    }
+    // Reduced Motion skips the brief simulation freeze used for impact emphasis.
+    this.hitStop = 0;
     this.shake = Math.max(0, this.shake - dt);
     this.parts = this.parts.filter(p => { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .96; p.vy *= .96; return (p.life -= dt) > 0; });
     this.floats = this.floats.filter(f => { f.y -= 50 * dt; return (f.life -= dt) > 0; });
@@ -3475,5 +3482,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, campaignPauseHint, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, W, H };
 else window.addEventListener("load", boot);
