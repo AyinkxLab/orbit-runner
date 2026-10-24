@@ -196,6 +196,13 @@ Crystals are not just a counter:
 - Ranked/daily runs still earn score, missions and lifetime progress, but the
   fixed loadout means crystals cannot buy a leaderboard advantage.
 
+## Core gameplay and first-run pacing
+
+- The first classic run eases players into the controls with a slightly slower meteor
+  spawn cadence and speed, and avoids double-meteor spawns during the tutorial.
+- This assistance ends with the existing tutorial. Experienced classic/campaign runs
+  use the established pacing, and daily/ranked challenges are unchanged for fairness.
+
 ## Progression systems
 
 - **Missions:** three date-seeded objectives per day. Progress is saved; rewards
