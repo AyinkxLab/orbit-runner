@@ -986,7 +986,7 @@ class Game {
       shocks: [], shooting: [], shootingT: 2.5, shipTrail: [],
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
-      newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "",
+      newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
   }
   goTitle() {
@@ -1782,6 +1782,7 @@ class Game {
     const id = this.currentCampaignSector;
     if (!this.save.campaign.completed.includes(id)) this.save.campaign.completed.push(id);
     const entry = STORY_ENTRIES.find(item => item.sectorId === id);
+    this.lastCampaignDiscovery = entry && !this.save.campaign.discoveries.includes(entry.id) ? entry.title : "";
     if (entry && !this.save.campaign.discoveries.includes(entry.id)) this.save.campaign.discoveries.push(entry.id);
     this.currentCampaignSector = null;
     const index = CAMPAIGN_SECTORS.findIndex(s => s.id === id);
@@ -2810,10 +2811,11 @@ class Game {
       this.buttons.push({ x: 38, y, w: W - 76, h: 194, fn: () => { this.storySelectedId = entry.id; } });
     });
     this.smallButton(c, "BACK", 52, 1024, 270, 60, "#b48cff", () => this.closeStoryArchive());
-    this.smallButton(c, "OPEN STAR MAP", 340, 1024, 328, 60, "#78c8ff", () => {
-      this.closeStoryArchive();
-      if (this.state === "title") this.openCampaignMap();
-    });
+    this.smallButton(c, this.storyReturnState === "campaign" ? "BACK TO STAR MAP" : "OPEN STAR MAP",
+      340, 1024, 328, 60, "#78c8ff", () => {
+        this.closeStoryArchive();
+        if (this.state === "title") this.openCampaignMap();
+      });
     text(c, "ARCHIVE RECORDS ARE SAVED ON THIS DEVICE  •  ESC / B TO RETURN", W / 2, 1130, 13, "#77748a");
   }
 
@@ -2920,6 +2922,8 @@ class Game {
       W / 2, 418, 17, "#9696aa");
     text(c, `CRYSTALS ${this.save.bank}  GEMS ${this.save.gems}  LIFETIME ${this.save.lifetime}  TIER ${tierFor(this.save.best).name}`,
       W / 2, 444, 14, "#828296");
+    if (this.lastCampaignDiscovery) text(c, `INTEL RECOVERED: ${this.lastCampaignDiscovery}  •  OPEN STORY ARCHIVE`,
+      W / 2, 456, 13, "#bba0ff", true);
 
     panel(c, 68, 462, W - 136, 158, "rgba(10,16,30,0.65)", "rgba(120,200,255,0.12)", 14);
     text(c, "MISSIONS", 86, 482, 17, "#c8c8dc", true, "left");
