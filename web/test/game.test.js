@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, planetSurveyProfile } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -537,6 +537,16 @@ test("campaign progression validates sector order and unknown IDs", () => {
   assert.equal(CAMPAIGN_SECTORS.length, 4);
 });
 
+test("campaign map positions produce usable canvas coordinates", () => {
+  const points = CAMPAIGN_SECTORS.map(sector => campaignMapPoint(sector));
+  assert.equal(points.length, 4);
+  assert.ok(points.every(point => point && Number.isFinite(point.x) && Number.isFinite(point.y)));
+  assert.ok(points.every(point => point.x >= 42 && point.x <= 678));
+  assert.ok(points.every(point => point.y >= 145 && point.y <= 645));
+  assert.equal(campaignMapPoint({ position: ["bad", 0.5] }), null);
+  assert.equal(campaignMapPoint({}), null);
+});
+
 test("campaign map prevents locked launches and starts selected biome", () => {
   const g = newGame();
   g.openCampaignMap();
@@ -572,6 +582,21 @@ test("daily and ranked runs do not advance campaign sectors", () => {
   assert.deepEqual(g.save.campaign.discoveries, []);
 });
 
+
+test("story signal chain reports the next lead and completes only when all known records are recovered", () => {
+  assert.deepEqual(storySignalState([]), {
+    recoveredCount: 0, total: STORY_ENTRIES.length, recoveredIds: [],
+    nextEntryId: STORY_ENTRIES[0].id, nextTitle: STORY_ENTRIES[0].title, decoded: false,
+  });
+  const partial = storySignalState(["beacon-awake", "unknown-record"]);
+  assert.equal(partial.recoveredCount, 1);
+  assert.deepEqual(partial.recoveredIds, ["beacon-awake"]);
+  assert.equal(partial.nextEntryId, "ember-expedition");
+  const complete = storySignalState(STORY_ENTRIES.map(entry => entry.id));
+  assert.equal(complete.recoveredCount, STORY_ENTRIES.length);
+  assert.equal(complete.nextEntryId, null);
+  assert.equal(complete.decoded, true);
+});
 
 test("story archive migrates completed sectors and rejects invalid discoveries", () => {
   const migrated = sanitizeCampaign({
@@ -681,11 +706,24 @@ test("replaying an already-charted sector does not trigger the campaign ending a
   assert.equal(g.state, "over");
 });
 
+test("campaign pause hint explains the selected sector objective and ignores unknown sectors", () => {
+  assert.equal(campaignPauseHint("sol-frontier"),
+    "SOL FRONTIER - Complete a run here to chart the frontier.");
+  assert.equal(campaignPauseHint("not-a-sector"), "");
+  assert.equal(campaignPauseHint(null), "");
+});
+
 test("reduced motion disables full-screen flash overlays without changing default visuals", () => {
   assert.equal(shouldRenderScreenFlash({ reducedMotion: true }), false);
   assert.equal(shouldRenderScreenFlash({ reducedMotion: false }), true);
   assert.equal(shouldRenderScreenFlash({ lowFx: true }), true);
   assert.equal(shouldRenderScreenFlash(), true);
+});
+
+test("reduced motion skips hit-stop pauses while normal settings retain them", () => {
+  assert.equal(shouldApplyHitStop({ reducedMotion: true }), false);
+  assert.equal(shouldApplyHitStop({ reducedMotion: false }), true);
+  assert.equal(shouldApplyHitStop(), true);
 });
 
 test("combo milestone copy names the streak tiers clearly and rejects invalid values", () => {
