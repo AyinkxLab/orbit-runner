@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -294,6 +294,25 @@ test("ad session cap stops new rewarded ads", () => {
   g.requestAd("double");
   assert.equal(g.ads.showing, false);
   assert.match(g.message, /No ads left/);
+});
+
+test("campaign sectors use distinct boss profiles while non-campaign runs retain Corona Surge", () => {
+  const profiles = CAMPAIGN_SECTORS.map(sector => campaignBossProfile(sector.id));
+  assert.equal(new Set(profiles.map(profile => profile.name)).size, CAMPAIGN_SECTORS.length);
+  assert.ok(profiles.every(profile => profile.timer > 0 && profile.need >= 3 && profile.coreLife > 0));
+  assert.deepEqual(
+    [campaignBossProfile("unknown-sector").name, campaignBossProfile(null).name],
+    ["CORONA SURGE", "CORONA SURGE"],
+  );
+  const g = newGame();
+  g.currentCampaignSector = "ember-reach";
+  g.startBoss();
+  assert.equal(g.boss.name, "EMBER COLOSSUS");
+  assert.equal(g.boss.ringMode, "outer");
+  g.boss = null;
+  g.currentCampaignSector = null;
+  g.startBoss();
+  assert.equal(g.boss.name, "CORONA SURGE");
 });
 
 test("clearing a Corona Surge awards crystals and tracks the stat", () => {
