@@ -142,6 +142,67 @@ CONTRACTS = [
      "crystal_mul": 2, "meteor_mul": 1.25, "flare_rate": 0},
 ]
 
+CAMPAIGN_SECTORS = [
+    {"id": "sol-frontier", "name": "SOL FRONTIER", "subtitle": "THE FIRST BEACON", "biome": "nebula", "unlockAfter": None},
+    {"id": "ember-reach", "name": "EMBER REACH", "subtitle": "SIGNAL IN THE FIRE", "biome": "ember", "unlockAfter": "sol-frontier"},
+    {"id": "silent-expanse", "name": "THE SILENT EXPANSE", "subtitle": "FROZEN ECHOES", "biome": "ice", "unlockAfter": "ember-reach"},
+    {"id": "void-crown", "name": "THE VOID CROWN", "subtitle": "EDGE OF THE UNKNOWN", "biome": "void", "unlockAfter": "silent-expanse"},
+]
+STORY_ENTRIES = [
+    {"id": "beacon-awake", "sectorId": "sol-frontier", "title": "The Beacon Wakes"},
+    {"id": "ember-expedition", "sectorId": "ember-reach", "title": "The Last Expedition"},
+    {"id": "silent-echo", "sectorId": "silent-expanse", "title": "An Echo in the Ice"},
+    {"id": "void-origin", "sectorId": "void-crown", "title": "The Signal's Origin"},
+]
+EXPLORATION_OBJECTIVES = [
+    {"id": "sol-signal", "sectorId": "sol-frontier"}, {"id": "sol-wreckage", "sectorId": "sol-frontier"},
+    {"id": "sol-minerals", "sectorId": "sol-frontier"}, {"id": "ember-core", "sectorId": "ember-reach"},
+    {"id": "ember-flight", "sectorId": "ember-reach"}, {"id": "ember-ruins", "sectorId": "ember-reach"},
+    {"id": "ice-echo", "sectorId": "silent-expanse"}, {"id": "ice-station", "sectorId": "silent-expanse"},
+    {"id": "ice-fragment", "sectorId": "silent-expanse"}, {"id": "void-lens", "sectorId": "void-crown"},
+    {"id": "void-pattern", "sectorId": "void-crown"}, {"id": "void-origin", "sectorId": "void-crown"},
+]
+
+
+def fresh_campaign():
+    return {"version": 3, "completed": [], "selected": "sol-frontier", "discoveries": [],
+            "exploration": {sector["id"]: [] for sector in CAMPAIGN_SECTORS}}
+
+
+def sanitize_campaign(raw):
+    out = fresh_campaign()
+    if not isinstance(raw, dict):
+        return out
+    requested = {sid for sid in raw.get("completed", []) if isinstance(sid, str)
+                 and any(sector["id"] == sid for sector in CAMPAIGN_SECTORS)} if isinstance(raw.get("completed"), list) else set()
+    for sector in CAMPAIGN_SECTORS:
+        if sector["id"] in requested and (not sector["unlockAfter"] or sector["unlockAfter"] in out["completed"]):
+            out["completed"].append(sector["id"])
+    if any(sector["id"] == raw.get("selected") for sector in CAMPAIGN_SECTORS):
+        out["selected"] = raw["selected"]
+    raw_discoveries = raw.get("discoveries", [])
+    known = {entry["id"] for entry in STORY_ENTRIES}
+    if isinstance(raw_discoveries, list):
+        requested_discoveries = {sid for sid in raw_discoveries if isinstance(sid, str) and sid in known}
+    else:
+        requested_discoveries = set()
+    for entry in STORY_ENTRIES:
+        if entry["sectorId"] in out["completed"]:
+            out["discoveries"].append(entry["id"])
+        elif entry["id"] in requested_discoveries and entry["sectorId"] in out["completed"]:
+            out["discoveries"].append(entry["id"])
+    raw_exploration = raw.get("exploration", {})
+    if not isinstance(raw_exploration, dict):
+        raw_exploration = {}
+    for sector in CAMPAIGN_SECTORS:
+        valid = {obj["id"] for obj in EXPLORATION_OBJECTIVES if obj["sectorId"] == sector["id"]}
+        claimed = raw_exploration.get(sector["id"], [])
+        if isinstance(claimed, list):
+            out["exploration"][sector["id"]] = list(dict.fromkeys(
+                sid for sid in claimed if isinstance(sid, str) and sid in valid))
+    return out
+
+
 GEM_PACKS = [
     {"id": "pocket", "name": "POCKET", "gems": 80, "price": "$0.99"},
     {"id": "pouch", "name": "POUCH", "gems": 240, "price": "$2.99"},
@@ -170,6 +231,7 @@ MISSION_POOL = [
 
 def fresh_save():
     return {
+        "campaign": fresh_campaign(),
         "best": 0, "bank": 0, "gems": 10, "muted": False, "lifetime": 0,
         "ships": ["scout"], "ship": "scout", "contract": "standard",
         "missions": [], "mission_day": "", "missions_done": 0,
@@ -199,6 +261,7 @@ def load_save():
     if not isinstance(raw, dict):
         raw = {}
     out = fresh_save()
+    out["campaign"] = sanitize_campaign(raw.get("campaign"))
 
     out["best"] = _num(raw.get("best"))
     out["bank"] = _num(raw.get("bank"))
@@ -651,7 +714,7 @@ class Powerup:
 
 
 class Game:
-    TITLE, PLAY, OVER, GEMS = "title", "play", "over", "gems"
+    TITLE, PLAY, OVER, GEMS, CAMPAIGN = "title", "play", "over", "gems", "campaign"
 
     def __init__(self, screen, ads: AdProvider):
         self.screen = screen
@@ -668,6 +731,7 @@ class Game:
         self.stars = [(random.randrange(W), random.randrange(H), random.random(),
                        0.25 + random.random() * 0.75) for _ in range(140)]
         self.state = self.TITLE
+        self.current_campaign_sector = None
         self.buy_shield = False
         self.message = ""
         self.gem_store_return = self.TITLE
@@ -763,12 +827,21 @@ class Game:
         self.message = ""
 
     def go_title(self):
+        self.current_campaign_sector = None
         self.reset_run()
         self.ghost = self.save.get("ghost")
         self.state = self.TITLE
         self.paused = False
 
-    def start_run(self, mode="classic"):
+    def start_run(self, mode="classic", campaign_sector=None):
+        if mode == "campaign":
+            sector = next((item for item in CAMPAIGN_SECTORS if item["id"] == campaign_sector), None)
+            if not sector or (sector["unlockAfter"] and sector["unlockAfter"] not in self.save["campaign"]["completed"]):
+                self.message = "Chart the previous sector first."
+                return
+            self.current_campaign_sector = sector["id"]
+        else:
+            self.current_campaign_sector = None
         self.ensure_missions()
         self.rotate_completed_missions()
         self.refresh_unlocks()
@@ -785,7 +858,13 @@ class Game:
             self.contract = next((c for c in CONTRACTS if c["id"] == self.save["contract"]), CONTRACTS[0])
             self.ship = next((s for s in SHIPS if s["id"] == self.save["ship"]), SHIPS[0])
             self.daily_best_at_start = 0
-        self.biome = BIOMES[self.seed % len(BIOMES)] if mode == "daily" else random.choice(BIOMES)
+        if mode == "daily":
+            self.biome = BIOMES[self.seed % len(BIOMES)]
+        elif mode == "campaign":
+            biome_id = next(item for item in CAMPAIGN_SECTORS if item["id"] == self.current_campaign_sector)["biome"]
+            self.biome = next(item for item in BIOMES if item["id"] == biome_id)
+        else:
+            self.biome = random.choice(BIOMES)
         self.rng = random.Random(self.seed)
         self.reset_run()
         self.apply_loadout()
@@ -1037,6 +1116,14 @@ class Game:
         self.save["best"] = max(self.save["best"], score)
         self.message = ""
         self.check_missions()
+        if self.mode == "campaign" and self.current_campaign_sector:
+            campaign = self.save["campaign"]
+            if self.current_campaign_sector not in campaign["completed"]:
+                campaign["completed"].append(self.current_campaign_sector)
+            story = next((entry for entry in STORY_ENTRIES if entry["sectorId"] == self.current_campaign_sector), None)
+            if story and story["id"] not in campaign["discoveries"]:
+                campaign["discoveries"].append(story["id"])
+            campaign["selected"] = self.current_campaign_sector
         self.refresh_unlocks()
         self.save["bank"] = max(0, self.save["bank"])
         write_save(self.save)
@@ -1321,7 +1408,9 @@ class Game:
                 self.go_title()
             return
         if self.state == self.TITLE:
-            if k in (pygame.K_SPACE, pygame.K_RETURN):
+            if k == pygame.K_c:
+                self.state = self.CAMPAIGN
+            elif k in (pygame.K_SPACE, pygame.K_RETURN):
                 self.start_run("classic")
             elif k == pygame.K_b:
                 self.toggle_shield()
@@ -1333,6 +1422,19 @@ class Game:
                 self.start_run("daily")
             elif k == pygame.K_g:
                 self.open_gem_store(self.TITLE)
+        elif self.state == self.CAMPAIGN:
+            campaign = self.save["campaign"]
+            sectors = CAMPAIGN_SECTORS
+            index = next((i for i, item in enumerate(sectors) if item["id"] == campaign["selected"]), 0)
+            if k in (pygame.K_LEFT, pygame.K_a):
+                campaign["selected"] = sectors[max(0, index - 1)]["id"]
+            elif k in (pygame.K_RIGHT, pygame.K_d):
+                campaign["selected"] = sectors[min(len(sectors) - 1, index + 1)]["id"]
+            elif k in (pygame.K_b, pygame.K_ESCAPE):
+                self.state = self.TITLE
+            elif k in (pygame.K_SPACE, pygame.K_RETURN):
+                self.start_run("campaign", campaign["selected"])
+            write_save(self.save)
         elif self.state == self.PLAY:
             if k in (pygame.K_UP, pygame.K_w) and self.ring < 2:
                 self.ring += 1
@@ -1802,6 +1904,10 @@ class Game:
             self.veil.fill((3, 3, 10, 145))
             s.blit(self.veil, (0, 0))
             self.draw_title()
+        elif self.state == self.CAMPAIGN:
+            self.veil.fill((3, 3, 10, 205))
+            s.blit(self.veil, (0, 0))
+            self.draw_campaign_map()
         else:
             self.draw_hud()
             if self.state == self.OVER:
@@ -1881,6 +1987,35 @@ class Game:
                    f"FLARE IN {self.flare_t:.1f}s - {RING_NAMES[self.flare_ring]} RING",
                    (255, int(110 * pulse + 60), 60), 167)
 
+    def draw_campaign_map(self):
+        f, s = self.fonts, self.screen
+        campaign = self.save["campaign"]
+        selected = campaign["selected"]
+        blit_c(s, f["big"], "CAMPAIGN STAR MAP", (120, 200, 255), 38)
+        blit_c(s, f["small"], "Chart sectors in order. Campaign progress uses the same save schema as web.", (160, 170, 195), 98)
+        completed = set(campaign["completed"])
+        for i, sector in enumerate(CAMPAIGN_SECTORS):
+            x = 45 + i * 205
+            unlocked = not sector["unlockAfter"] or sector["unlockAfter"] in completed
+            active = sector["id"] == selected
+            color = (120, 230, 255) if active else (120, 255, 140) if sector["id"] in completed else (120, 130, 155) if unlocked else (65, 70, 90)
+            draw_panel(s, x, 190, 190, 180, (10, 16, 30), 225, (*color, 120 if active else 60), 14)
+            pygame.draw.circle(s, color, (x + 95, 245), 22 if active else 15, 3)
+            blit_c(s, f["mid"], str(i + 1), color, 232)
+            blit_c(s, f["small"], sector["name"], (230, 235, 245), 292)
+            status = "CHARTED" if sector["id"] in completed else "AVAILABLE" if unlocked else "LOCKED"
+            blit_c(s, f["small"], status, color, 324)
+            if active:
+                pygame.draw.rect(s, color, (x + 8, 355, 174, 3))
+        blit_c(s, f["mid"], next(item for item in CAMPAIGN_SECTORS if item["id"] == selected)["subtitle"],
+               (255, 212, 90), 430)
+        blit_c(s, f["small"], f"SECTORS CHARTED {len(completed)}/4   STORY RECORDS {len(campaign['discoveries'])}/4",
+               (170, 190, 220), 468)
+        survey_total = sum(len(campaign["exploration"][item["id"]]) for item in CAMPAIGN_SECTORS)
+        blit_c(s, f["small"], f"OPTIONAL SURVEYS {survey_total}/12", (120, 230, 255), 496)
+        blit_c(s, f["mid"], "LEFT / RIGHT select   SPACE launch   B back", (255, 255, 255), 560)
+        blit_c(s, f["small"], "Campaign progress is saved locally and validated during migration.", (120, 130, 155), 604)
+
     def draw_title(self):
         f = self.fonts
         s = self.screen
@@ -1921,7 +2056,7 @@ class Game:
                (120, 120, 145), 32, 410)
 
         blit_c(s, f["mid"], f"SPACE launch - {self.contract['name']}", (255, 255, 255), 466)
-        blit_c(s, f["small"], "D daily   V ship   1/2/3 contract   G gem store", (170, 170, 200), 502)
+        blit_c(s, f["small"], "C star map   D daily   V ship   1/2/3 contract   G gem store", (170, 170, 200), 502)
 
         bank = self.save["bank"]
         daily_best = self.save["daily"]["best"] if self.save["daily"]["date"] == date_key() else 0
