@@ -198,17 +198,28 @@ function segDist(px, py, x1, y1, x2, y2) {
 const CAMPAIGN_SECTORS = [
   { id: "sol-frontier", name: "SOL FRONTIER", subtitle: "THE FIRST BEACON", biome: "nebula",
     description: "A quiet frontier. An ancient beacon has begun transmitting again.",
-    objective: "Complete a run here to chart the frontier.", unlockAfter: null, position: [0.16, 0.22] },
+    objective: "Complete a run here to chart the frontier.", unlockAfter: null, position: [0.16, 0.30] },
   { id: "ember-reach", name: "EMBER REACH", subtitle: "SIGNAL IN THE FIRE", biome: "ember",
     description: "A red giant illuminates the last known route of a missing expedition.",
-    objective: "Complete Sol Frontier to open this route.", unlockAfter: "sol-frontier", position: [0.39, 0.36] },
+    objective: "Complete Sol Frontier to open this route.", unlockAfter: "sol-frontier", position: [0.39, 0.72] },
   { id: "silent-expanse", name: "THE SILENT EXPANSE", subtitle: "FROZEN ECHOES", biome: "ice",
     description: "Frozen stations drift beneath an atmosphere of blue ice and static.",
-    objective: "Complete Ember Reach to open this route.", unlockAfter: "ember-reach", position: [0.64, 0.19] },
+    objective: "Complete Ember Reach to open this route.", unlockAfter: "ember-reach", position: [0.64, 0.20] },
   { id: "void-crown", name: "THE VOID CROWN", subtitle: "EDGE OF THE UNKNOWN", biome: "void",
     description: "A dark anomaly bends starlight around the source of the signal.",
-    objective: "Complete the Silent Expanse to open this route.", unlockAfter: "silent-expanse", position: [0.83, 0.39] },
+    objective: "Complete the Silent Expanse to open this route.", unlockAfter: "silent-expanse", position: [0.83, 0.61] },
 ];
+
+// Convert normalized sector metadata into logical canvas coordinates.
+function campaignMapPoint(sector, width = W, top = 145, height = 500, padding = 42) {
+  const position = sector && sector.position;
+  if (!Array.isArray(position) || position.length < 2 ||
+      !Number.isFinite(position[0]) || !Number.isFinite(position[1])) return null;
+  return {
+    x: padding + position[0] * (width - padding * 2),
+    y: top + position[1] * height,
+  };
+}
 const STORY_ENTRIES = [
   { id: "beacon-awake", sectorId: "sol-frontier", title: "The Beacon Wakes", classification: "FIRST CONTACT",
     teaser: "A signal older than the frontier itself.", body: "The beacon did not wake by accident. Its repeating pulse predates every mapped station in Sol Frontier, yet its power source is still warm. Someone—or something—has been waiting for a receiver." },
@@ -2873,67 +2884,113 @@ class Game {
   }
 
   drawCampaignMap(c) {
-    c.fillStyle = "rgba(2, 5, 16, 0.97)"; c.fillRect(0, 0, W, H);
-    for (let i = 0; i < 70; i++) {
+    c.fillStyle = "rgba(2, 5, 16, 0.98)"; c.fillRect(0, 0, W, H);
+    // Stable star positions with subtle twinkle; no random gameplay state is introduced.
+    for (let i = 0; i < 96; i++) {
       const x = (i * 137 + 41) % W, y = (i * 211 + 19) % H;
-      circle(c, x, y, i % 9 === 0 ? 2 : 1, i % 3 === 0 ? "rgba(120,200,255,0.6)" : "rgba(210,225,255,0.38)");
+      const alpha = 0.18 + 0.34 * (0.5 + 0.5 * Math.sin(this.time * 0.7 + i * 1.7));
+      circle(c, x, y, i % 11 === 0 ? 2 : 1,
+        i % 3 === 0 ? `rgba(120,200,255,${alpha})` : `rgba(210,225,255,${alpha})`);
     }
-    text(c, "THE LOST SYSTEMS", W / 2, 68, 34, "#d9edff", true);
-    text(c, "SECTOR NAVIGATION  /  SELECT A DESTINATION", W / 2, 108, 14, "#7fa7c8", true);
-    c.strokeStyle = "rgba(95, 166, 220, 0.55)"; c.lineWidth = 3; c.beginPath();
+    if (typeof c.createRadialGradient === "function") {
+      const nebula = c.createRadialGradient(W * 0.52, 390, 20, W * 0.52, 390, 390);
+      nebula.addColorStop(0, "rgba(50, 95, 155, 0.16)");
+      nebula.addColorStop(1, "rgba(5, 12, 30, 0)");
+      c.fillStyle = nebula; c.fillRect(0, 130, W, 540);
+    }
+    text(c, "THE LOST SYSTEMS", W / 2, 58, 32, "#d9edff", true);
+    text(c, "GALACTIC CHART  /  SELECT A DESTINATION", W / 2, 94, 13, "#7fa7c8", true);
+
+    const points = CAMPAIGN_SECTORS.map(sector => campaignMapPoint(sector));
+    // Draw routes behind the planets. Locked routes are dashed and charted routes glow.
+    for (let i = 1; i < CAMPAIGN_SECTORS.length; i++) {
+      const sector = CAMPAIGN_SECTORS[i], previous = CAMPAIGN_SECTORS[i - 1];
+      const a = points[i - 1], b = points[i];
+      if (!a || !b) continue;
+      const unlocked = this.campaignUnlocked(sector);
+      const completed = this.save.campaign.completed.includes(previous.id);
+      c.save();
+      if (c.setLineDash) c.setLineDash(unlocked ? [] : [7, 9]);
+      c.strokeStyle = completed ? "rgba(141,255,206,0.82)" :
+        unlocked ? "rgba(120,220,255,0.78)" : "rgba(103,133,164,0.45)";
+      c.lineWidth = unlocked ? 3 : 2;
+      c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(b.x, b.y); c.stroke();
+      if (c.setLineDash) c.setLineDash([]);
+      const pulse = (this.time * 0.12 + i * 0.22) % 1;
+      circle(c, a.x + (b.x - a.x) * pulse, a.y + (b.y - a.y) * pulse,
+        3, unlocked ? "#a8e9ff" : "rgba(130,150,175,0.65)");
+      c.restore();
+    }
+
     CAMPAIGN_SECTORS.forEach((sector, i) => {
-      const x = 104, y = 218 + i * 210;
-      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
-    });
-    c.stroke();
-    CAMPAIGN_SECTORS.forEach((sector, i) => {
-      const x = 38, y = 150 + i * 210, w = W - 76, h = 178;
+      const point = points[i];
+      if (!point) return;
       const selected = sector.id === this.campaignSelectedSector;
       const unlocked = this.campaignUnlocked(sector);
       const completed = this.save.campaign.completed.includes(sector.id);
-      panel(c, x, y, w, h,
-        selected ? "rgba(16, 36, 58, 0.94)" : "rgba(7, 15, 31, 0.88)",
-        selected ? "rgba(120, 220, 255, 0.9)" : "rgba(120, 170, 210, 0.24)", 16);
-      const px = 104, py = y + 68, pr = 27;
-      if (typeof c.createRadialGradient === "function") {
-        const glow = c.createRadialGradient(px, py, 2, px, py, 47);
-        glow.addColorStop(0, sector.biome === "ember" ? "rgba(255,125,70,0.9)" :
-          sector.biome === "ice" ? "rgba(110,225,255,0.9)" :
-          sector.biome === "void" ? "rgba(160,120,255,0.9)" : "rgba(100,180,255,0.9)");
-        glow.addColorStop(1, "rgba(0,0,0,0)");
-        c.fillStyle = glow; c.fillRect(px - 48, py - 48, 96, 96);
-      }
+      const mastery = this.sectorMastery(sector.id);
+      const px = point.x, py = point.y;
       const planetCol = sector.biome === "ember" ? "#ff874f" : sector.biome === "ice" ? "#8deaff" :
         sector.biome === "void" ? "#a18bff" : "#78c8ff";
-      circle(c, px, py, pr, planetCol);
-      circle(c, px - 8, py - 8, 10, "rgba(255,255,255,0.28)");
-      c.strokeStyle = "rgba(210,230,255,0.55)"; c.lineWidth = 2; c.beginPath();
-      c.ellipse(px, py, pr + 13, 8, -0.24, 0, TAU); c.stroke();
-      const titleCol = unlocked ? "#e6f3ff" : "#718096";
-      text(c, `${i + 1}. ${sector.name}`, 153, y + 36, 20, titleCol, true, "left");
-      text(c, sector.subtitle, 153, y + 62, 12, unlocked ? "#80d8ff" : "#65738a", true, "left");
-      text(c, sector.description, 153, y + 94, 13, "#b8c6d9", false, "left");
-      const mastery = this.sectorMastery(sector.id);
-      text(c, mastery.mastered ? "SECTOR MASTERED" : completed ? "SECTOR CHARTED" : unlocked ? "ROUTE AVAILABLE" : "ROUTE LOCKED",
-        153, y + 126, 13, mastery.mastered ? "#8dffce" : completed ? "#a5c9e8" : unlocked ? "#80d8ff" : "#768096", true, "left");
-      text(c, "SURVEYS " + mastery.completedObjectives + "/" + mastery.totalObjectives + "  •  " + sector.biome.toUpperCase(),
-        153, y + 151, 11, mastery.mastered ? "#8dffce" : "#778aa4", false, "left");
-      this.buttons.push({ x, y, w, h, fn: () => this.selectCampaignSector(sector.id) });
+      const glowRadius = selected ? 58 + 4 * Math.sin(this.time * 2.4) : 46;
+      if (typeof c.createRadialGradient === "function") {
+        const glow = c.createRadialGradient(px, py, 2, px, py, glowRadius);
+        glow.addColorStop(0, selected ? "rgba(120,220,255,0.38)" : "rgba(100,180,255,0.22)");
+        glow.addColorStop(1, "rgba(0,0,0,0)");
+        c.fillStyle = glow; c.fillRect(px - glowRadius, py - glowRadius, glowRadius * 2, glowRadius * 2);
+      }
+      if (selected) circle(c, px, py, 36 + 3 * Math.sin(this.time * 2.4), "rgba(120,220,255,0.12)", 2);
+      if (completed) circle(c, px, py, 33, "rgba(141,255,206,0.78)", 2);
+      circle(c, px, py, 25, unlocked ? planetCol : "#3b4b62");
+      circle(c, px - 7, py - 8, 9, unlocked ? "rgba(255,255,255,0.34)" : "rgba(220,230,245,0.12)");
+      c.strokeStyle = unlocked ? "rgba(210,230,255,0.72)" : "rgba(130,148,170,0.42)";
+      c.lineWidth = 2; c.beginPath(); c.ellipse(px, py, 34, 9, -0.24, 0, TAU); c.stroke();
+
+      const labelY = sector.position[1] < 0.46 ? py + 54 : py - 43;
+      const labelCol = unlocked ? "#e6f3ff" : "#718096";
+      text(c, sector.name, px, labelY, 13, labelCol, true);
+      text(c, completed ? "CHARTED" : unlocked ? "AVAILABLE" : "LOCKED",
+        px, labelY + 17, 10, completed ? "#8dffce" : unlocked ? "#80d8ff" : "#718096", true);
+      this.buttons.push({
+        x: px - 54, y: py - 52, w: 108, h: 104,
+        fn: () => this.selectCampaignSector(sector.id),
+      });
+      if (mastery.mastered) {
+        circle(c, px + 27, py - 24, 8, "#8dffce");
+        text(c, "✓", px + 27, py - 24, 10, "#07131d", true);
+      }
     });
+
     const selected = this.campaignSector(this.campaignSelectedSector) || CAMPAIGN_SECTORS[0];
     const unlocked = this.campaignUnlocked(selected);
+    const mastery = this.sectorMastery(selected.id);
+    panel(c, 34, 650, W - 68, 252, "rgba(7, 18, 35, 0.92)", "rgba(120,220,255,0.62)", 16);
+    text(c, selected.name, 56, 684, 20, "#e6f3ff", true, "left");
+    text(c, selected.subtitle, 56, 710, 11, unlocked ? "#80d8ff" : "#718096", true, "left");
+    text(c, selected.description, 56, 746, 12, "#b8c6d9", false, "left");
+    text(c, "OBJECTIVE  /  " + selected.objective, 56, 781, 11, "#a8c8e3", false, "left");
+    text(c, mastery.mastered ? "SECTOR MASTERED" :
+      this.save.campaign.completed.includes(selected.id) ? "SECTOR CHARTED" :
+      unlocked ? "ROUTE AVAILABLE" : "ROUTE LOCKED — COMPLETE THE PREVIOUS SECTOR",
+      56, 822, 12, mastery.mastered ? "#8dffce" : unlocked ? "#80d8ff" : "#9aa7ba", true, "left");
+    text(c, "SURVEYS " + mastery.completedObjectives + "/" + mastery.totalObjectives +
+      "  •  " + selected.biome.toUpperCase(), 56, 852, 11, "#778aa4", false, "left");
+    text(c, "SECTOR " + (CAMPAIGN_SECTORS.findIndex(s => s.id === selected.id) + 1) +
+      " / " + CAMPAIGN_SECTORS.length, W - 56, 684, 10, "#7fa7c8", true, "right");
+
     this.smallButton(c, unlocked ? "LAUNCH SECTOR" : "SECTOR LOCKED",
-      38, 1005, 300, 64, unlocked ? "#ffd783" : "#6e778b",
+      38, 925, 300, 62, unlocked ? "#ffd783" : "#6e778b",
       () => this.launchCampaignSector(selected.id));
     this.smallButton(c, unlocked ? "EXPLORE PLANET" : "EXPLORE LOCKED",
-      350, 1005, 332, 64, unlocked ? "#78c8ff" : "#6e778b",
+      350, 925, 332, 62, unlocked ? "#78c8ff" : "#6e778b",
       () => this.openPlanetExplore(selected.id));
-    this.smallButton(c, "STORY ARCHIVE", 52, 1080, 270, 56, "#b48cff", () => this.openStoryArchive("campaign"));
-    this.smallButton(c, "BACK TO TITLE", 340, 1080, 328, 56, "#83bfe9", () => this.goTitle());
+    this.smallButton(c, "STORY ARCHIVE", 52, 1000, 270, 54, "#b48cff", () => this.openStoryArchive("campaign"));
+    this.smallButton(c, "BACK TO TITLE", 340, 1000, 328, 54, "#83bfe9", () => this.goTitle());
     const progress = this.campaignMastery();
-    text(c, this.campaignMessage || ("SECTORS MASTERED " + progress.masteredSectors + "/4  •  OPTIONAL SURVEYS " +
-      progress.completedObjectives + "/" + progress.totalObjectives), W / 2, 1168, 13, "#9bb6ce", false);
-    text(c, "UP / DOWN SELECT  •  ENTER LAUNCH  •  L ARCHIVE  •  ESC BACK", W / 2, 1214, 12, "#607994");
+    text(c, this.campaignMessage || ("SECTORS MASTERED " + progress.masteredSectors + "/" + CAMPAIGN_SECTORS.length +
+      "  •  OPTIONAL SURVEYS " + progress.completedObjectives + "/" + progress.totalObjectives),
+      W / 2, 1092, 12, "#9bb6ce", false);
+    text(c, "UP / DOWN SELECT  •  ENTER LAUNCH  •  L ARCHIVE  •  ESC BACK", W / 2, 1140, 11, "#607994");
   }
 
   drawCampaignEnding(c) {
@@ -3466,5 +3523,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, campaignMapPoint, W, H };
 else window.addEventListener("load", boot);
