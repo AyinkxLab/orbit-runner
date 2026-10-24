@@ -1,7 +1,7 @@
 # Orbit Runner
 
-Arcade orbit-dodger with a "watch ad to continue" mechanic, daily missions and
-meta-progression.
+Arcade orbit-dodger with gem-powered continues, campaign sectors, daily missions
+and meta-progression.
 
 ![Title screen](desktop/orbit_title.png)
 
@@ -12,7 +12,7 @@ meta-progression.
 - `web/` - installable mobile web app (PWA). See `web/README.md`.
 - `desktop/` - Python/pygame version.
 
-**Play online:** https://ayinkx.github.io/orbit-runner/web/
+**Play online:** https://ayinkxlab.github.io/orbit-runner/
 
 ## Controls
 
@@ -36,7 +36,7 @@ watch the warnings.
 
 ### Your first run
 
-1. Open [Orbit Runner](https://ayinkx.github.io/orbit-runner/web/) and start a classic run.
+1. Open [Orbit Runner](https://ayinkxlab.github.io/orbit-runner/) and start a classic run.
 2. Move between the three orbital rings to avoid incoming meteors. Use the controls
    below to move outward or inward.
 3. Tap or press Space to reverse your orbit when you need to change direction.
