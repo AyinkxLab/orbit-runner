@@ -76,6 +76,12 @@ The boss HUD clearly states the core-collection objective, shows progress and a
 shrinking timer bar, and switches to an urgent text cue in the final four seconds.
 Boss timing, rewards and competitive rules are unchanged.
 
+### Combo milestone feedback
+
+Combo callouts now mark the x2, x4, x6 and x8 milestones with distinct tier names.
+This makes the current streak easier to read during play without changing combo
+timing, scoring, rewards, or competitive rules.
+
 ### Core gameplay first-run pacing
 
 The first classic tutorial run uses a gentler meteor cadence and speed to help new
