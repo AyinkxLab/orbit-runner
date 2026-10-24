@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
-  BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, freshCampaign,
+  BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, freshCampaign,
   sanitizeCampaign } = require("../game.js");
 
 function localStore() {
@@ -494,7 +494,7 @@ test("campaign save defaults and migration preserve existing progress", () => {
   assert.equal(loaded.gems, 45);
   assert.deepEqual(loaded.campaign.completed, ["sol-frontier"]);
   assert.equal(loaded.campaign.selected, "silent-expanse");
-  assert.deepEqual(freshCampaign(), { version: 1, completed: [], selected: "sol-frontier" });
+  assert.deepEqual(freshCampaign(), { version: 2, completed: [], selected: "sol-frontier", discoveries: [] });
   delete global.localStorage;
 });
 
@@ -527,6 +527,7 @@ test("finishing a campaign run unlocks the next sector exactly once", () => {
   g.launchCampaignSector("sol-frontier");
   g.die();
   assert.deepEqual(g.save.campaign.completed, ["sol-frontier"]);
+  assert.deepEqual(g.save.campaign.discoveries, ["beacon-awake"]);
   assert.equal(g.campaignUnlocked("ember-reach"), true);
   assert.equal(g.currentCampaignSector, null);
   g.die();
@@ -539,4 +540,34 @@ test("daily and ranked runs do not advance campaign sectors", () => {
   assert.equal(g.currentCampaignSector, null);
   g.die();
   assert.deepEqual(g.save.campaign.completed, []);
+  assert.deepEqual(g.save.campaign.discoveries, []);
+});
+
+
+test("story archive migrates completed sectors and rejects invalid discoveries", () => {
+  const migrated = sanitizeCampaign({
+    version: 1,
+    completed: ["sol-frontier", "ember-reach"],
+    discoveries: ["void-origin", "not-a-record"],
+  });
+  assert.deepEqual(migrated.discoveries, ["beacon-awake", "ember-expedition"]);
+  assert.equal(STORY_ENTRIES.length, 4);
+  assert.deepEqual(STORY_ENTRIES.map(entry => entry.sectorId), CAMPAIGN_SECTORS.map(sector => sector.id));
+});
+
+test("campaign completion persists its story discovery and archive navigation returns", () => {
+  const g = newGame();
+  g.launchCampaignSector("sol-frontier");
+  g.die();
+  assert.ok(g.save.campaign.discoveries.includes("beacon-awake"));
+  assert.equal(g.storyDiscovered("beacon-awake"), true);
+  assert.equal(g.storyDiscovered("ember-expedition"), false);
+  g.openCampaignMap();
+  g.openStoryArchive("campaign");
+  assert.equal(g.state, "archive");
+  g.closeStoryArchive();
+  assert.equal(g.state, "campaign");
+  g.openStoryArchive("title");
+  g.closeStoryArchive();
+  assert.equal(g.state, "title");
 });
