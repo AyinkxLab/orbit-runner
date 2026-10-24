@@ -182,6 +182,9 @@ function comboMilestoneText(combo) {
   if (tier === MAX_COMBO) return "OVERDRIVE";
   return "";
 }
+function shouldRenderScreenFlash(settings = {}) {
+  return settings.reducedMotion !== true;
+}
 function segDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx * dx + dy * dy;
@@ -2731,7 +2734,7 @@ class Game {
       c.globalAlpha = 1;
     }
 
-    if (this.flash > 0) {
+    if (this.flash > 0 && shouldRenderScreenFlash(this.save.settings)) {
       c.fillStyle = `rgba(255,140,60,${Math.min(0.35, this.flash * 0.5)})`;
       c.fillRect(0, 0, W, H);
     }
@@ -3463,5 +3466,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, W, H };
 else window.addEventListener("load", boot);
