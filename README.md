@@ -103,7 +103,7 @@ with the tutorial and does not change daily or ranked challenge rules.
   shared schema makes campaign progress portable for future import/export tooling but
   does not automatically sync files between devices.
 
-### Realism pass
+- Planetary surveys show sector-specific environmental conditions, hazards, research focus, and field notes while reusing the existing 12 optional objectives and rewards.\n\n### Realism pass
 
 - **Orbital motion:** inner rings orbit faster (Kepler-style), reversing has
   angular inertia, and ring changes use a spring-damper radial move.
