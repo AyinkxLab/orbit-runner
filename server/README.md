@@ -97,8 +97,8 @@ Environment variables:
 GET  /api/health
 GET  /api/leaderboard?scope=weekly&week=2026-W43&limit=20&offset=0
 GET  /api/leaderboard?scope=daily&date=2026-10-23&limit=20&offset=0
-GET  /api/leaderboard?scope=friends&week=2026-W43&accessToken=...
-GET  /api/leaderboard?scope=league&week=2026-W43&accessToken=...
+GET  /api/leaderboard?scope=friends&week=2026-W43
+GET  /api/leaderboard?scope=league&week=2026-W43
 GET  /api/ghost?scope=weekly&week=2026-W43
 POST /api/runs/start    {"provider":"facebook","accessToken":"...","mode":"ranked","week":"2026-W43"}
 POST /api/scores
@@ -135,8 +135,12 @@ POST /api/delete        {"provider":"facebook","accessToken":"..."}
 }
 ```
 
-The client sends the token only with score, run-start, event and deletion
-requests; the server does not store it.
+The client sends Facebook tokens in JSON bodies for score, run-start, event and
+deletion requests. Friends and league leaderboard requests send the token in the
+HTTP header `Authorization: Bearer <facebook-access-token>`, never in the URL.
+The server does not store the token. Query-string tokens are not accepted for
+leaderboard authentication, and legacy `accessToken` query values are redacted
+from request logs.
 
 Ranked/daily runs first call `/api/runs/start`, which returns a one-use token
 bound to the user and scope. Set `RUN_TOKENS=0` only for a legacy client or
@@ -176,7 +180,7 @@ personal data, replace the display name with a pseudonym or hash the user id in
 python -m unittest discover -s server -p "test_*.py" -v
 ```
 
-The 21 tests cover seed parity, validation, SQLite storage, best-score ranking,
+The tests cover bearer-header validation, seed parity, validation, SQLite storage, best-score ranking,
 pagination, duplicate runs, deletion, rate limits, leagues, ghosts, run tokens,
 events and Facebook configuration.
 
