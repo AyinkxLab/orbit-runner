@@ -63,6 +63,33 @@ class ServerTests(unittest.TestCase):
         with srv.database() as conn:
             return srv.board_response(conn, "ranked:2026-W43", user, limit, offset)
 
+    def test_bearer_token_accepts_valid_header(self):
+        handler = object.__new__(srv.Handler)
+        handler.headers = {"Authorization": "Bearer facebook-test-token"}
+        self.assertEqual(handler._bearer_token(), "facebook-test-token")
+
+    def test_bearer_token_rejects_missing_header(self):
+        handler = object.__new__(srv.Handler)
+        handler.headers = {}
+        with self.assertRaises(srv.ApiError) as context:
+            handler._bearer_token()
+        self.assertEqual(context.exception.status, 401)
+
+    def test_bearer_token_rejects_malformed_header(self):
+        handler = object.__new__(srv.Handler)
+        for value in ("Basic abc", "Bearer", "Bearer   "):
+            handler.headers = {"Authorization": value}
+            with self.subTest(value=value), self.assertRaises(srv.ApiError) as context:
+                handler._bearer_token()
+            self.assertEqual(context.exception.status, 401)
+
+    def test_legacy_query_token_is_not_used_for_friends_board(self):
+        handler = object.__new__(srv.Handler)
+        handler.headers = {}
+        with self.assertRaises(srv.ApiError) as context:
+            handler._leaderboard({"scope": ["friends"], "accessToken": ["legacy-token"]})
+        self.assertEqual(context.exception.status, 401)
+
     def test_seed_matches_client_contract(self):
         self.assertEqual(srv.seed_for("ranked", week="2026-W43"), srv.fnv1a("orbit-ranked-2026-W43"))
         self.assertEqual(srv.seed_for("daily", day="2026-10-23"), srv.fnv1a("orbit-daily-2026-10-23"))
