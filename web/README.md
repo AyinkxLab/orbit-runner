@@ -15,6 +15,20 @@ W/S, Space to reverse, `P` pause, `M` mute, `V` ship, `1/2/3` contract,
 `R` ranked, `L` leaderboard, `D` daily, `C` shop, `G` Gem Store. On the
 leaderboard: `1/2/3` tabs, `F` connect Facebook, `R` refresh, `B` back.
 
+## Accessibility and performance
+
+- The canvas can receive keyboard focus. Its accessible description summarizes the main
+  keyboard/touch controls, and a polite screen-reader status announces major screen and
+  pause changes. Menus still render inside the canvas, so visual controls and shortcut
+  labels remain important.
+- Settings include colour-blind cues, reduced motion, low-FX, music and SFX toggles.
+  Reduced motion disables screen shake, afterimages and drifting sky; low-FX reduces
+  particles, stars and background layers.
+- When the page becomes hidden, gameplay auto-pauses and the animation loop stops.
+  Returning to the page resumes rendering without applying the hidden time to the run.
+- The service-worker cache version must be incremented whenever shipped web assets
+  change so installed copies fetch the new release.
+
 ## Platform support
 
 - **Phone/tablet:** iOS Safari, Android Chrome, installed PWA, or Capacitor.
