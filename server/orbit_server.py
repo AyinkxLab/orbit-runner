@@ -662,12 +662,15 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "OrbitRunnerScores/2.0"
 
     def log_message(self, fmt, *args):
-        print("%s - %s" % (self.address_string(), fmt % args))
+        # Older clients may still send a token in the query string. Redact it
+        # before logging request lines so legacy traffic cannot leak credentials.
+        message = re.sub(r"(?i)(accessToken=)[^&\\s]*", r"\\1[REDACTED]", fmt % args)
+        print("%s - %s" % (self.address_string(), message))
 
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("Cache-Control", "no-store")
 
     def _json(self, status, payload):
@@ -689,6 +692,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(204)
         self._cors()
         self.end_headers()
+
+    def _bearer_token(self):
+        authorization = self.headers.get("Authorization", "").strip()
+        parts = authorization.split(None, 1)
+        if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
+            raise ApiError(401, "missing or invalid Authorization bearer token")
+        return parts[1].strip()
 
     def _body(self):
         length = int(self.headers.get("Content-Length") or 0)
@@ -771,7 +781,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(400, "invalid date")
             scope_key = "daily:" + day
         elif scope == "friends":
-            token = (query.get("accessToken") or [""])[0]
+            token = self._bearer_token()
             me = verify_facebook(token)
             user_id = me["id"]
             friends = facebook_friend_ids(token)
@@ -781,7 +791,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(400, "invalid week")
             scope_key = "ranked:" + week
         elif scope == "league":
-            token = (query.get("accessToken") or [""])[0]
+            token = self._bearer_token()
             return self._league(query, token)
         else:
             raise ApiError(400, "scope must be weekly, daily, friends or league")
