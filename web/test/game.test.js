@@ -3,7 +3,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
-  BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey } = require("../game.js");
+  BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, freshCampaign,
+  sanitizeCampaign } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -479,4 +480,63 @@ test("AdMob provider does not reward an early dismiss", async () => {
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(rewards, 0);
   assert.equal(closed, 1);
+});
+
+
+test("campaign save defaults and migration preserve existing progress", () => {
+  const store = localStore();
+  store.orbit_runner_save = JSON.stringify({
+    bank: 123, gems: 45,
+    campaign: { version: 1, completed: ["sol-frontier", "silent-expanse"], selected: "silent-expanse" },
+  });
+  const loaded = Save.load();
+  assert.equal(loaded.bank, 123);
+  assert.equal(loaded.gems, 45);
+  assert.deepEqual(loaded.campaign.completed, ["sol-frontier"]);
+  assert.equal(loaded.campaign.selected, "silent-expanse");
+  assert.deepEqual(freshCampaign(), { version: 1, completed: [], selected: "sol-frontier" });
+  delete global.localStorage;
+});
+
+test("campaign progression validates sector order and unknown IDs", () => {
+  const clean = sanitizeCampaign({
+    completed: ["sol-frontier", "ember-reach", "void-crown", "unknown-sector"],
+    selected: "void-crown",
+  });
+  assert.deepEqual(clean.completed, ["sol-frontier", "ember-reach"]);
+  assert.equal(clean.selected, "void-crown");
+  assert.equal(CAMPAIGN_SECTORS.length, 4);
+});
+
+test("campaign map prevents locked launches and starts selected biome", () => {
+  const g = newGame();
+  g.openCampaignMap();
+  assert.equal(g.state, "campaign");
+  assert.equal(g.campaignUnlocked("sol-frontier"), true);
+  assert.equal(g.campaignUnlocked("ember-reach"), false);
+  assert.equal(g.launchCampaignSector("ember-reach"), false);
+  assert.equal(g.state, "campaign");
+  assert.equal(g.launchCampaignSector("sol-frontier"), true);
+  assert.equal(g.state, "play");
+  assert.equal(g.currentCampaignSector, "sol-frontier");
+  assert.equal(g.biome.id, "nebula");
+});
+
+test("finishing a campaign run unlocks the next sector exactly once", () => {
+  const g = newGame();
+  g.launchCampaignSector("sol-frontier");
+  g.die();
+  assert.deepEqual(g.save.campaign.completed, ["sol-frontier"]);
+  assert.equal(g.campaignUnlocked("ember-reach"), true);
+  assert.equal(g.currentCampaignSector, null);
+  g.die();
+  assert.deepEqual(g.save.campaign.completed, ["sol-frontier"]);
+});
+
+test("daily and ranked runs do not advance campaign sectors", () => {
+  const g = newGame();
+  g.start("daily");
+  assert.equal(g.currentCampaignSector, null);
+  g.die();
+  assert.deepEqual(g.save.campaign.completed, []);
 });
