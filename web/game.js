@@ -2681,9 +2681,9 @@ class Game {
     }
     text(c, "THE LOST SYSTEMS", W / 2, 68, 34, "#d9edff", true);
     text(c, "SECTOR NAVIGATION  /  SELECT A DESTINATION", W / 2, 108, 14, "#7fa7c8", true);
-    c.strokeStyle = "rgba(95, 166, 220, 0.45)"; c.lineWidth = 2; c.beginPath();
-    CAMPAIGN_SECTORS.forEach((s, i) => {
-      const x = 86 + s.position[0] * (W - 172), y = 155 + i;
+    c.strokeStyle = "rgba(95, 166, 220, 0.55)"; c.lineWidth = 3; c.beginPath();
+    CAMPAIGN_SECTORS.forEach((sector, i) => {
+      const x = 104, y = 218 + i * 210;
       if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
     });
     c.stroke();
