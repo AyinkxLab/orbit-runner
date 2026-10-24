@@ -1809,6 +1809,7 @@ class Game {
     const kk = k.length === 1 ? k.toLowerCase() : k;
     if (kk === "m") { this.toggleMute(); return; }
     if (this.state === "title" && kk === "l") { this.openStoryArchive("title"); return; }
+    if (this.state === "title" && kk === "b") { this.openBoard("weekly"); return; }
     if (this.state === "archive") {
       if (kk === "escape" || kk === "b" || kk === "q") this.closeStoryArchive();
       else if (kk === "m") this.toggleMute();
@@ -2890,7 +2891,7 @@ class Game {
       W / 2, 1200, 15, "#c8c8dc");
     text(c, "Crystals buy shields/cosmetics - gems revive runs",
       W / 2, 1224, 15, "#78e6ff");
-    text(c, "1/2/3 contract - V ship - R ranked - L archive/board - C shop - G gems - O settings",
+    text(c, "1/2/3 contract - V ship - R ranked - L archive - B board - C shop - G gems - O settings",
       W / 2, 1248, 14, "#9aa6c0");
     text(c, "P pause - M mute - swipe up/down - tap to reverse", W / 2, 1270, 14, "#828296");
   }
