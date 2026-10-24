@@ -145,6 +145,19 @@ const mulberry32 = seed => {
   };
 };
 const seededPick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
+
+// First-run pacing assistance is limited to the non-competitive tutorial.
+// Daily and ranked runs always retain the standard deterministic difficulty.
+function difficultyProfile(level, { tutorial = false, competitive = false } = {}) {
+  const safeLevel = clamp(Number.isFinite(level) ? Math.floor(level) : 1, 1, 14);
+  const beginnerAssist = tutorial && !competitive;
+  return {
+    level: safeLevel,
+    spawnIntervalMultiplier: beginnerAssist ? 1.22 : 1,
+    meteorSpeedMultiplier: beginnerAssist ? 0.88 : 1,
+    doubleSpawnChance: beginnerAssist ? 0 : Math.min(0.5, safeLevel * 0.06),
+  };
+}
 function segDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx * dx + dy * dy;
@@ -2210,19 +2223,21 @@ class Game {
     }
     this.updateBoss(dt);
 
-    // spawn meteors
+    // Spawn meteors. The first-run tutorial gets more breathing room;
+    // ranked/daily and experienced runs keep the established difficulty curve.
+    const pacing = difficultyProfile(lvl, { tutorial: this.tutorialActive, competitive: this.competitive });
     const bossMul = this.boss ? 0.55 : 1;
     if ((this.spawnT -= dt) <= 0 && this.meteors.length < 44) {
-      const n = 1 + (this.chance(Math.min(0.5, lvl * 0.06)) ? 1 : 0);
+      const n = 1 + (this.chance(pacing.doubleSpawnChance) ? 1 : 0);
       for (let i = 0; i < n; i++) {
         const type = this.pickMeteorType();
         this.meteors.push(this.spawnMeteor(
           this.rnd(0, TAU),
-          (130 + 16 * lvl) * this.rnd(.8, 1.25) * this.meteorMul * (this.boss ? 1.1 : 1),
+          (130 + 16 * lvl) * this.rnd(.8, 1.25) * this.meteorMul * pacing.meteorSpeedMultiplier * (this.boss ? 1.1 : 1),
           this.rnd(14, 24), type.id,
         ));
       }
-      this.spawnT = Math.max(0.24, (1 - 0.07 * lvl) * bossMul) * this.rnd(.7, 1.2);
+      this.spawnT = Math.max(0.24, (1 - 0.07 * lvl) * bossMul * pacing.spawnIntervalMultiplier) * this.rnd(.7, 1.2);
     }
     // spawn crystals (biased toward the player's ring)
     if ((this.gemT -= dt) <= 0 && this.gems.length < 4) {
@@ -3410,5 +3425,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, W, H };
 else window.addEventListener("load", boot);
