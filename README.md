@@ -103,7 +103,7 @@ with the tutorial and does not change daily or ranked challenge rules.
   shared schema makes campaign progress portable for future import/export tooling but
   does not automatically sync files between devices.
 
-### Realism pass
+- Campaign boss encounters now use sector-specific profiles, with distinct core movement, target-ring patterns, timers, and names. Daily/ranked runs keep the standard Corona Surge profile.\n\n### Realism pass
 
 - **Orbital motion:** inner rings orbit faster (Kepler-style), reversing has
   angular inertia, and ring changes use a spring-damper radial move.
