@@ -70,6 +70,12 @@ meta-progression.
 Solar-flare telegraphs identify both the target ring and remaining time with
 shape-based and text cues, so players do not need to rely on color alone.
 
+### Corona Surge feedback
+
+The boss HUD clearly states the core-collection objective, shows progress and a
+shrinking timer bar, and switches to an urgent text cue in the final four seconds.
+Boss timing, rewards and competitive rules are unchanged.
+
 ### Core gameplay first-run pacing
 
 The first classic tutorial run uses a gentler meteor cadence and speed to help new

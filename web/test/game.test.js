@@ -672,3 +672,12 @@ test("replaying an already-charted sector does not trigger the campaign ending a
   g.die();
   assert.equal(g.state, "over");
 });
+
+test("Corona Surge HUD guidance states core progress and remaining time", () => {
+  const { bossWarningText } = require("../game.js");
+  assert.equal(bossWarningText(8.26, 1, 3), "COLLECT CORES 1/3 — 8.3s");
+  assert.equal(bossWarningText(3.9, 2, 3), "HURRY — 1 CORE LEFT — 3.9s");
+  assert.equal(bossWarningText(2.1, 0, 3), "HURRY — 3 CORES LEFT — 2.1s");
+  assert.equal(bossWarningText(0, 1, 3), "");
+  assert.equal(bossWarningText(Number.NaN, 1, 3), "");
+});

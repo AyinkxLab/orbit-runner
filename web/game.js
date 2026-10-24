@@ -164,6 +164,15 @@ function flareWarningText(secondsRemaining, ringIndex) {
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
   return `FLARE IN ${secondsRemaining.toFixed(1)}s — ${ring.toUpperCase()} RING`;
 }
+function bossWarningText(secondsRemaining, cores, need = 3) {
+  if (!Number.isFinite(secondsRemaining) || secondsRemaining <= 0 ||
+      !Number.isFinite(cores) || !Number.isFinite(need) || need < 1) return "";
+  const remaining = Math.max(0, Math.floor(need) - Math.max(0, Math.floor(cores)));
+  const time = secondsRemaining.toFixed(1);
+  return secondsRemaining <= 4
+    ? `HURRY — ${remaining} CORE${remaining === 1 ? "" : "S"} LEFT — ${time}s`
+    : `COLLECT CORES ${Math.min(Math.max(0, Math.floor(cores)), Math.floor(need))}/${Math.floor(need)} — ${time}s`;
+}
 function segDist(px, py, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const len2 = dx * dx + dy * dy;
@@ -2815,9 +2824,18 @@ class Game {
       text(c, `GHOST ${this.ghost.score}`, 30, 196, 14, "#5c6f8a", false, "left");
 
     if (this.boss) {
-      panel(c, W / 2 - 160, 154, 320, 32, "rgba(30,10,6,0.72)", "rgba(255,106,60,0.5)", 10);
-      text(c, `CORONA SURGE ${this.boss.cores}/${this.boss.need}  ${Math.max(0, this.boss.timer).toFixed(1)}s`,
-        W / 2, 170, 19, "#ff8a4a", true);
+      const surgeRemaining = Math.max(0, this.boss.timer);
+      const surgeUrgent = surgeRemaining <= 4;
+      panel(c, W / 2 - 160, 154, 320, 58, "rgba(30,10,6,0.84)",
+        surgeUrgent ? "rgba(255,220,120,0.95)" : "rgba(255,106,60,0.65)", 10);
+      text(c, `CORONA SURGE  ${this.boss.cores}/${this.boss.need}`,
+        W / 2, 169, 18, "#ffb06a", true);
+      text(c, bossWarningText(surgeRemaining, this.boss.cores, this.boss.need),
+        W / 2, 188, 13, surgeUrgent ? "#fff0a8" : "#f2e8dc", true);
+      c.fillStyle = "rgba(255,255,255,0.16)";
+      c.fillRect(W / 2 - 140, 201, 280, 4);
+      c.fillStyle = surgeUrgent ? "#ffe678" : "#ff8a4a";
+      c.fillRect(W / 2 - 140, 201, 280 * clamp(surgeRemaining / 14, 0, 1), 4);
     } else if (this.flareT > 0 && this.flareRing >= 0) {
       panel(c, W / 2 - 160, 154, 320, 32, "rgba(30,10,6,0.72)", "rgba(255,106,60,0.5)", 10);
       c.globalAlpha = 0.6 + 0.4 * Math.sin(this.time * 14);
@@ -3430,5 +3448,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, W, H };
 else window.addEventListener("load", boot);

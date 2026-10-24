@@ -262,3 +262,12 @@ The 38-test suite covers reward accounting, save sanitising, missions, contracts
 ship modifiers, daily determinism, gem continues, gem store, ad caps, flares, boss surges,
 ghosts, ranked loadouts, local leaderboards, challenge seeds, profile storage,
 AdMob reward-event ordering, onboarding, biomes, shop purchases and settings.
+
+ 
+## Corona Surge feedback
+ 
+- The boss HUD explicitly tells players to collect cores, shows core progress, and
+  displays a shrinking time bar.
+- At four seconds remaining, the instruction switches to an urgent countdown cue.
+- These are presentation-only changes: boss timing, rewards, and competitive rules
+  remain unchanged.
