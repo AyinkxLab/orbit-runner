@@ -3355,10 +3355,12 @@ class Game {
       W / 2, 414, 18, "#78c8ff");
     const campaignHint = campaignPauseHint(this.currentCampaignSector);
     if (campaignHint) text(c, campaignHint, W / 2, 446, 15, "#ffd783");
-    this.button(c, "Resume", 470, "#78ff8c", () => this.togglePause(), 96);
-    this.button(c, "Restart", 598, "#c8c8dc", () => this.beginMode(this.mode), 96);
-    this.button(c, "Title", 726, "#c8c8dc", () => this.goTitle(), 96);
-    this.button(c, this.save.muted ? "Settings (muted)" : "Settings", 854,
+    // Reserve space for the campaign objective so it cannot overlap Resume.
+    const pauseButtonOffset = campaignHint ? 48 : 0;
+    this.button(c, "Resume", 470 + pauseButtonOffset, "#78ff8c", () => this.togglePause(), 96);
+    this.button(c, "Restart", 598 + pauseButtonOffset, "#c8c8dc", () => this.beginMode(this.mode), 96);
+    this.button(c, "Title", 726 + pauseButtonOffset, "#c8c8dc", () => this.goTitle(), 96);
+    this.button(c, this.save.muted ? "Settings (muted)" : "Settings", 854 + pauseButtonOffset,
       this.save.muted ? "#ff8a8a" : "#78e6ff", () => this.openSettings(), 84);
     text(c, "P / SPACE resume - R restart - T title - O settings - M mute", W / 2, 1010, 18, "#828296");
   }
