@@ -233,6 +233,21 @@ const EXPLORATION_OBJECTIVES = [
   { id: "void-pattern", sectorId: "void-crown", title: "Decode the Pattern", detail: "Compare the anomaly's pulses with the beacon.", reward: 40, color: "#d9c4ff" },
   { id: "void-origin", sectorId: "void-crown", title: "Find the Source", detail: "Pinpoint the final coordinate in the signal map.", reward: 50, color: "#8dffce" },
 ];
+
+const PLANET_SURVEY_PROFILES = [
+  { sectorId: "sol-frontier", environment: "DUSTY NEBULA", hazard: "IONIZED DEBRIS",
+    focus: "TRACE THE ANCIENT BEACON", fieldNote: "Old relay fragments still echo the beacon pulse." },
+  { sectorId: "ember-reach", environment: "MAGNETIC ASH", hazard: "STELLAR SURGES",
+    focus: "RECOVER EXPEDITION TELEMETRY", fieldNote: "Red-giant storms can distort survey readings." },
+  { sectorId: "silent-expanse", environment: "SUBZERO STATIC", hazard: "ICE SHEAR",
+    focus: "ISOLATE THE REPEATING ECHO", fieldNote: "Frozen relays repeat a response from beneath the ice." },
+  { sectorId: "void-crown", environment: "GRAVITY LENSING", hazard: "SPACETIME DISTORTION",
+    focus: "ALIGN THE FOUR-PART SIGNAL", fieldNote: "Anomaly pulses match the beacon's navigational rhythm." },
+];
+function planetSurveyProfile(sectorId) {
+  return PLANET_SURVEY_PROFILES.find(profile => profile.sectorId === sectorId) || null;
+}
+
 const freshCampaign = () => ({ version: 3, completed: [], selected: "sol-frontier", discoveries: [], exploration: {
   "sol-frontier": [], "ember-reach": [], "silent-expanse": [], "void-crown": [],
 } });
@@ -3013,10 +3028,18 @@ class Game {
     c.beginPath(); c.ellipse(px, py + 12, radius + 28, 34, -0.18, 0, TAU); c.stroke();
     circle(c, px + 158, py - 16, 10, "#e6f7ff");
     circle(c, px + 158, py - 16, 22, "rgba(120,220,255,0.16)");
-    text(c, "SURVEY PROGRESS  " + done + " / " + objectives.length, W / 2, 442, 15, "#b9d7ed", true);
+    const profile = planetSurveyProfile(sector.id);
+    if (profile) {
+      panel(c, 34, 414, W - 68, 48, "rgba(8,18,35,0.9)", "rgba(120,190,230,0.32)", 10);
+      text(c, profile.environment, 50, 432, 10, "#8deaff", true, "left");
+      text(c, "RISK  /  " + profile.hazard, W / 2, 432, 10, "#ffd783", true);
+      text(c, profile.focus, W - 50, 432, 10, "#b48cff", true, "right");
+      text(c, profile.fieldNote, W / 2, 451, 10, "#8aa6c1", false);
+    }
+    text(c, "SURVEY PROGRESS  " + done + " / " + objectives.length, W / 2, 482, 14, "#b9d7ed", true);
     objectives.forEach((objective, i) => {
-      const y = 482 + i * 164, completed = this.explorationDone(objective, sector.id);
-      panel(c, 36, y, W - 72, 144, completed ? "rgba(12,42,43,0.9)" : "rgba(8,16,32,0.94)",
+      const y = 508 + i * 158, completed = this.explorationDone(objective, sector.id);
+      panel(c, 36, y, W - 72, 140, completed ? "rgba(12,42,43,0.9)" : "rgba(8,16,32,0.94)",
         completed ? "rgba(141,255,206,0.65)" : "rgba(120,190,230,0.28)", 14);
       circle(c, 70, y + 39, 13, completed ? "#8dffce" : objective.color);
       text(c, completed ? "DATA SECURED" : "SURVEY " + (i + 1), 98, y + 28, 11,
@@ -3024,7 +3047,7 @@ class Game {
       text(c, objective.title, 58, y + 59, 19, "#e6f3ff", true, "left");
       text(c, objective.detail, 58, y + 85, 12, "#9fb3cc", false, "left");
       this.smallButton(c, completed ? "COMPLETE" : "SCAN",
-        500, y + 96, 158, 34, completed ? "#477f76" : objective.color,
+        500, y + 92, 158, 34, completed ? "#477f76" : objective.color,
         () => this.completeExplorationObjective(objective.id));
       text(c, "REWARD  +" + objective.reward + " CRYSTALS", 58, y + 119, 11, "#8dffce", true, "left");
     });
@@ -3466,5 +3489,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, planetSurveyProfile, W, H };
 else window.addEventListener("load", boot);
