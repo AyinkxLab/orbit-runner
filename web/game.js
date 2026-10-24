@@ -164,6 +164,29 @@ function flareWarningText(secondsRemaining, ringIndex) {
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
   return `FLARE IN ${secondsRemaining.toFixed(1)}s — ${ring.toUpperCase()} RING`;
 }
+const CAMPAIGN_BOSS_PROFILES = [
+  { sectorId: "sol-frontier", name: "BEACON WARDEN", intro: "BEACON WARDEN DETECTED",
+    timer: 14, need: 3, coreDelay: 1.5, coreLife: 6, spin: 0.75, ringMode: "any",
+    coreColor: "#78c8ff", clearLabel: "WARDEN DEFEATED", failLabel: "WARDEN WITHDREW" },
+  { sectorId: "ember-reach", name: "EMBER COLOSSUS", intro: "EMBER COLOSSUS RISING",
+    timer: 13, need: 3, coreDelay: 1.2, coreLife: 5.5, spin: 1.1, ringMode: "outer",
+    coreColor: "#ff874f", clearLabel: "COLOSSUS DEFEATED", failLabel: "COLOSSUS SURVIVED" },
+  { sectorId: "silent-expanse", name: "FROST SENTINEL", intro: "FROST SENTINEL AWAKENS",
+    timer: 15, need: 3, coreDelay: 1.8, coreLife: 7, spin: 0.5, ringMode: "inner",
+    coreColor: "#8deaff", clearLabel: "SENTINEL DISABLED", failLabel: "SENTINEL REFORMS" },
+  { sectorId: "void-crown", name: "VOID ARCHON", intro: "VOID ARCHON MANIFESTS",
+    timer: 14, need: 4, coreDelay: 1.1, coreLife: 5, spin: -1.15, ringMode: "alternating",
+    coreColor: "#b48cff", clearLabel: "ARCHON DISPERSED", failLabel: "ARCHON RETREATS" },
+];
+const DEFAULT_BOSS_PROFILE = {
+  name: "CORONA SURGE", intro: "CORONA SURGE!", timer: 14, need: 3,
+  coreDelay: 1.5, coreLife: 6, spin: 0.75, ringMode: "any",
+  coreColor: "#ffd45a", clearLabel: "SURGE CLEARED", failLabel: "SURGE FADED",
+};
+function campaignBossProfile(sectorId) {
+  const profile = CAMPAIGN_BOSS_PROFILES.find(item => item.sectorId === sectorId);
+  return { ...(profile || DEFAULT_BOSS_PROFILE) };
+}
 function bossWarningText(secondsRemaining, cores, need = 3) {
   if (!Number.isFinite(secondsRemaining) || secondsRemaining <= 0 ||
       !Number.isFinite(cores) || !Number.isFinite(need) || need < 1) return "";
@@ -2112,11 +2135,15 @@ class Game {
   // ---- Corona Surge -----------------------------------------------------
   startBoss() {
     if (this.boss) return;
-    this.boss = { timer: 14, need: 3, cores: 0, core: null, coreT: 1.5 };
+    const profile = campaignBossProfile(this.currentCampaignSector);
+    this.boss = {
+      ...profile, timer: profile.timer, need: profile.need, cores: 0, core: null,
+      coreT: profile.coreDelay, coreSpawns: 0,
+    };
     this.flareT = 0; this.flareRing = -1;
     this.flash = Math.max(this.flash, 0.35); this.hitStop = Math.max(this.hitStop, 0.06);
     this.shake = Math.max(this.shake, 0.35);
-    this.float(CX, CY - 160, "CORONA SURGE!", "#ff5a2a");
+    this.float(CX, CY - 160, profile.intro, profile.coreColor);
     Sfx.play("boss"); Sfx.noise(700, 0.16, 600);
   }
   updateBoss(dt) {
@@ -2124,13 +2151,21 @@ class Game {
     this.boss.timer -= dt;
     this.boss.coreT -= dt;
     if (!this.boss.core && this.boss.coreT <= 0 && this.boss.timer > 3) {
-      this.boss.core = { ring: this.rndInt(3), angle: this.rnd(0, TAU), life: 6 };
-      this.boss.coreT = 3.5;
+      let ring;
+      if (this.boss.ringMode === "outer") ring = 1 + this.rndInt(2);
+      else if (this.boss.ringMode === "inner") ring = this.rndInt(2);
+      else if (this.boss.ringMode === "alternating") ring = this.boss.coreSpawns % 2 === 0 ? 0 : 2;
+      else ring = this.rndInt(3);
+      this.boss.coreSpawns++;
+      this.boss.core = { ring, angle: this.rnd(0, TAU), life: this.boss.coreLife, color: this.boss.coreColor };
+      this.boss.coreT = this.boss.coreDelay;
     }
     if (this.boss.core) {
       this.boss.core.life -= dt;
-      this.boss.core.angle += 0.75 * dt;
-      if (this.boss.core.life <= 0) { this.boss.core = null; this.boss.coreT = 1; }
+      this.boss.core.angle += this.boss.spin * dt;
+      if (this.boss.core.life <= 0) {
+        this.boss.core = null; this.boss.coreT = this.boss.coreDelay;
+      }
     }
     if (this.boss.cores >= this.boss.need) this.clearBoss();
     else if (this.boss.timer <= 0) this.failBoss();
@@ -2143,13 +2178,16 @@ class Game {
     this.save.stats.bosses++; this.bossesCleared++;
     this.flash = Math.max(this.flash, 0.4); this.hitStop = Math.max(this.hitStop, 0.12);
     this.shake = Math.max(this.shake, 0.5);
-    this.float(CX, CY - 120, `SURGE CLEARED +${bonus}`, "#ffd45a");
+    const clearLabel = this.boss.clearLabel || "SURGE CLEARED";
+    const coreColor = this.boss.coreColor || "#ffd45a";
+    this.float(CX, CY - 120, `${clearLabel} +${bonus}`, coreColor);
     this.boss = null;
     Sfx.play("boss"); Sfx.noise(450, 0.16, 1200);
   }
   failBoss() {
     if (!this.boss) return;
-    this.float(CX, CY - 120, "SURGE FADED", "#9696aa");
+    const failLabel = this.boss.failLabel || "SURGE FADED";
+    this.float(CX, CY - 120, failLabel, "#9696aa");
     this.boss = null;
   }
 
@@ -2386,7 +2424,7 @@ class Game {
         this.float(gx, gy, `CORE +${pts}`, "#ffd45a");
         this.burst(gx, gy, ["#ffd45a", "#ff9a3c"], 30, 280, .7);
         Sfx.play("power"); vibrate(30);
-        this.boss.core = null; this.boss.coreT = 1;
+        this.boss.core = null; this.boss.coreT = this.boss.coreDelay;
         if (this.boss && this.boss.cores >= this.boss.need) this.clearBoss();
       }
     }
@@ -2644,9 +2682,10 @@ class Game {
       const core = this.boss.core;
       const gx = CX + Math.cos(core.angle) * RINGS[core.ring] + ox;
       const gy = CY + Math.sin(core.angle) * RINGS[core.ring] + oy;
-      circle(c, gx, gy, 26 + 4 * Math.sin(this.time * 8), "#ffd45a33");
+      const coreColor = core.color || "#ffd45a";
+      circle(c, gx, gy, 26 + 4 * Math.sin(this.time * 8), coreColor + "33");
       circle(c, gx, gy, 18, "#0c0a14");
-      circle(c, gx, gy, 18, "#ffd45a", 4);
+      circle(c, gx, gy, 18, coreColor, 4);
       text(c, "C", gx, gy + 1, 20, "#ffd45a", true);
     }
 
@@ -2844,10 +2883,11 @@ class Game {
     if (this.boss) {
       const surgeRemaining = Math.max(0, this.boss.timer);
       const surgeUrgent = surgeRemaining <= 4;
+      const bossColor = this.boss.coreColor || "#ff8a4a";
       panel(c, W / 2 - 160, 154, 320, 58, "rgba(30,10,6,0.84)",
-        surgeUrgent ? "rgba(255,220,120,0.95)" : "rgba(255,106,60,0.65)", 10);
-      text(c, `CORONA SURGE  ${this.boss.cores}/${this.boss.need}`,
-        W / 2, 169, 18, "#ffb06a", true);
+        surgeUrgent ? "rgba(255,220,120,0.95)" : bossColor, 10);
+      text(c, `${this.boss.name || "CORONA SURGE"}  ${this.boss.cores}/${this.boss.need}`,
+        W / 2, 169, 16, bossColor, true);
       text(c, bossWarningText(surgeRemaining, this.boss.cores, this.boss.need),
         W / 2, 188, 13, surgeUrgent ? "#fff0a8" : "#f2e8dc", true);
       c.fillStyle = "rgba(255,255,255,0.16)";
@@ -3466,5 +3506,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, campaignBossProfile, W, H };
 else window.addEventListener("load", boot);
