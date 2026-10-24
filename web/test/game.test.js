@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
-  BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, freshCampaign,
+  BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
   sanitizeCampaign } = require("../game.js");
 
 function localStore() {
@@ -494,7 +494,9 @@ test("campaign save defaults and migration preserve existing progress", () => {
   assert.equal(loaded.gems, 45);
   assert.deepEqual(loaded.campaign.completed, ["sol-frontier"]);
   assert.equal(loaded.campaign.selected, "silent-expanse");
-  assert.deepEqual(freshCampaign(), { version: 2, completed: [], selected: "sol-frontier", discoveries: [] });
+  assert.deepEqual(freshCampaign(), { version: 3, completed: [], selected: "sol-frontier", discoveries: [], exploration: {
+    "sol-frontier": [], "ember-reach": [], "silent-expanse": [], "void-crown": [],
+  } });
   delete global.localStorage;
 });
 
@@ -570,4 +572,42 @@ test("campaign completion persists its story discovery and archive navigation re
   g.openStoryArchive("title");
   g.closeStoryArchive();
   assert.equal(g.state, "title");
+});
+
+
+test("planet exploration is available only for unlocked campaign sectors", () => {
+  const g = newGame();
+  g.openCampaignMap();
+  assert.equal(g.openPlanetExplore("ember-reach"), false);
+  assert.equal(g.state, "campaign");
+  assert.equal(g.openPlanetExplore("sol-frontier"), true);
+  assert.equal(g.state, "explore");
+  assert.equal(g.explorationObjectives().length, 3);
+});
+
+test("exploration objectives persist, reward once, and remain sector-specific", () => {
+  localStore();
+  const g = newGame();
+  g.openPlanetExplore("sol-frontier");
+  const objective = EXPLORATION_OBJECTIVES.find(item => item.sectorId === "sol-frontier");
+  const startingBank = g.save.bank, startingLifetime = g.save.lifetime;
+  assert.equal(g.completeExplorationObjective(objective.id), true);
+  assert.equal(g.completeExplorationObjective(objective.id), false);
+  assert.equal(g.save.bank, startingBank + objective.reward);
+  assert.equal(g.save.lifetime, startingLifetime + objective.reward);
+  assert.equal(g.explorationDone(objective), true);
+  assert.equal(g.completeExplorationObjective("ember-core"), false);
+  assert.deepEqual(Save.load().campaign.exploration["sol-frontier"], [objective.id]);
+  delete global.localStorage;
+});
+
+test("exploration save migration drops unknown and cross-sector objective IDs", () => {
+  const clean = sanitizeCampaign({ exploration: {
+    "sol-frontier": ["sol-signal", "ember-core", "not-real"],
+    "void-crown": ["void-origin"],
+    "unknown-sector": ["sol-signal"],
+  } });
+  assert.deepEqual(clean.exploration["sol-frontier"], ["sol-signal"]);
+  assert.deepEqual(clean.exploration["void-crown"], ["void-origin"]);
+  assert.deepEqual(clean.exploration["ember-reach"], []);
 });

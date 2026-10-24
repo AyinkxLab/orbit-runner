@@ -179,7 +179,23 @@ const STORY_ENTRIES = [
   { id: "void-origin", sectorId: "void-crown", title: "The Signal's Origin", classification: "FRONTIER ARCHIVE",
     teaser: "The source lies beyond the mapped systems.", body: "At the edge of the Void Crown, the signal resolves into a navigational pattern. The four sectors are not separate destinations; together they form a route. The beacon was never a warning. It was a map." },
 ];
-const freshCampaign = () => ({ version: 2, completed: [], selected: "sol-frontier", discoveries: [] });
+const EXPLORATION_OBJECTIVES = [
+  { id: "sol-signal", sectorId: "sol-frontier", title: "Trace the Beacon", detail: "Triangulate the repeating signal across the orbital debris.", reward: 20, color: "#78c8ff" },
+  { id: "sol-wreckage", sectorId: "sol-frontier", title: "Survey the Wreckage", detail: "Scan a derelict relay drifting beyond the inner ring.", reward: 25, color: "#a7b8d8" },
+  { id: "sol-minerals", sectorId: "sol-frontier", title: "Map Crystal Veins", detail: "Record the mineral deposits beneath the dust clouds.", reward: 30, color: "#8dffce" },
+  { id: "ember-core", sectorId: "ember-reach", title: "Read the Star", detail: "Measure the red giant's unstable magnetic pulse.", reward: 25, color: "#ff874f" },
+  { id: "ember-flight", sectorId: "ember-reach", title: "Find Flight Recorder", detail: "Recover telemetry from the missing expedition.", reward: 30, color: "#ffd783" },
+  { id: "ember-ruins", sectorId: "ember-reach", title: "Chart the Ruins", detail: "Map the remains of an abandoned orbital station.", reward: 35, color: "#ffb49a" },
+  { id: "ice-echo", sectorId: "silent-expanse", title: "Listen Beneath the Ice", detail: "Separate a faint reply from the sector's static.", reward: 30, color: "#8deaff" },
+  { id: "ice-station", sectorId: "silent-expanse", title: "Survey the Station", detail: "Scan the frozen station's sealed research wing.", reward: 35, color: "#bcecff" },
+  { id: "ice-fragment", sectorId: "silent-expanse", title: "Recover Black Box", detail: "Locate the fragment that recorded the first reply.", reward: 40, color: "#9fd5ff" },
+  { id: "void-lens", sectorId: "void-crown", title: "Measure the Anomaly", detail: "Map the distortion at the edge of known space.", reward: 35, color: "#b48cff" },
+  { id: "void-pattern", sectorId: "void-crown", title: "Decode the Pattern", detail: "Compare the anomaly's pulses with the beacon.", reward: 40, color: "#d9c4ff" },
+  { id: "void-origin", sectorId: "void-crown", title: "Find the Source", detail: "Pinpoint the final coordinate in the signal map.", reward: 50, color: "#8dffce" },
+];
+const freshCampaign = () => ({ version: 3, completed: [], selected: "sol-frontier", discoveries: [], exploration: {
+  "sol-frontier": [], "ember-reach": [], "silent-expanse": [], "void-crown": [],
+} });
 function sanitizeCampaign(raw) {
   const out = freshCampaign();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
@@ -197,6 +213,13 @@ function sanitizeCampaign(raw) {
     if (out.completed.includes(entry.sectorId) || knownDiscoveries.has(entry.id)) {
       if (out.completed.includes(entry.sectorId)) out.discoveries.push(entry.id);
     }
+  }
+  const rawExploration = raw.exploration && typeof raw.exploration === "object" && !Array.isArray(raw.exploration)
+    ? raw.exploration : {};
+  for (const sector of CAMPAIGN_SECTORS) {
+    const validIds = new Set(EXPLORATION_OBJECTIVES.filter(o => o.sectorId === sector.id).map(o => o.id));
+    const claimed = Array.isArray(rawExploration[sector.id]) ? rawExploration[sector.id] : [];
+    out.exploration[sector.id] = [...new Set(claimed.filter(id => typeof id === "string" && validIds.has(id)))];
   }
   return out;
 }
@@ -1739,6 +1762,39 @@ class Game {
     this.state = "campaign";
     this.paused = false;
   }
+  openPlanetExplore(id = this.campaignSelectedSector) {
+    const sector = this.campaignSector(id);
+    if (!this.campaignUnlocked(sector)) {
+      this.campaignMessage = "ROUTE LOCKED — COMPLETE THE PREVIOUS SECTOR";
+      return false;
+    }
+    this.explorationSectorId = sector.id;
+    this.campaignSelectedSector = sector.id;
+    this.save.campaign.selected = sector.id;
+    this.explorationMessage = "";
+    Save.write(this.save);
+    this.state = "explore";
+    this.paused = false;
+    return true;
+  }
+  explorationObjectives(sectorId = this.explorationSectorId) {
+    return EXPLORATION_OBJECTIVES.filter(objective => objective.sectorId === sectorId);
+  }
+  explorationDone(objectiveOrId, sectorId = this.explorationSectorId) {
+    const id = typeof objectiveOrId === "string" ? objectiveOrId : objectiveOrId && objectiveOrId.id;
+    return !!id && !!this.save.campaign.exploration[sectorId] && this.save.campaign.exploration[sectorId].includes(id);
+  }
+  completeExplorationObjective(id) {
+    const objective = EXPLORATION_OBJECTIVES.find(item => item.id === id && item.sectorId === this.explorationSectorId);
+    if (!objective || !this.campaignUnlocked(this.explorationSectorId) || this.explorationDone(objective)) return false;
+    if (!this.save.campaign.exploration[this.explorationSectorId]) this.save.campaign.exploration[this.explorationSectorId] = [];
+    this.save.campaign.exploration[this.explorationSectorId].push(objective.id);
+    this.save.bank = Math.min(MAX_GEMS, this.save.bank + objective.reward);
+    this.save.lifetime = Math.min(MAX_GEMS, this.save.lifetime + objective.reward);
+    this.explorationMessage = "DATA RECOVERED  /  +" + objective.reward + " CRYSTALS";
+    Save.write(this.save);
+    return true;
+  }
   openStoryArchive(returnState = this.state === "campaign" ? "campaign" : "title") {
     this.storyReturnState = returnState === "campaign" ? "campaign" : "title";
     this.storySelectedId = STORY_ENTRIES.find(entry => this.save.campaign.discoveries.includes(entry.id))?.id || STORY_ENTRIES[0].id;
@@ -1813,6 +1869,14 @@ class Game {
     if (this.state === "archive") {
       if (kk === "escape" || kk === "b" || kk === "q") this.closeStoryArchive();
       else if (kk === "m") this.toggleMute();
+      return;
+    }
+    if (this.state === "explore") {
+      if (kk === "escape" || kk === "b" || kk === "q") this.state = "campaign";
+      else if (kk >= "1" && kk <= "3") {
+        const objective = this.explorationObjectives()[Number(kk) - 1];
+        if (objective) this.completeExplorationObjective(objective.id);
+      }
       return;
     }
     if (this.state === "campaign") {
@@ -2405,6 +2469,7 @@ class Game {
   draw(c) {
     this.buttons = [];
     if (this.state === "campaign") return this.drawCampaignMap(c);
+    if (this.state === "explore") return this.drawPlanetExplore(c);
     if (this.state === "archive") return this.drawStoryArchive(c);
     if (this.state === "board") return this.drawBoard(c);
     if (this.state === "shop") return this.drawShop(c);
@@ -2767,13 +2832,73 @@ class Game {
     });
     const selected = this.campaignSector(this.campaignSelectedSector) || CAMPAIGN_SECTORS[0];
     const unlocked = this.campaignUnlocked(selected);
-    this.smallButton(c, unlocked ? "LAUNCH SELECTED SECTOR" : "SECTOR LOCKED",
-      52, 1005, W - 104, 64, unlocked ? "#ffd783" : "#6e778b",
+    this.smallButton(c, unlocked ? "LAUNCH SECTOR" : "SECTOR LOCKED",
+      38, 1005, 300, 64, unlocked ? "#ffd783" : "#6e778b",
       () => this.launchCampaignSector(selected.id));
+    this.smallButton(c, unlocked ? "EXPLORE PLANET" : "EXPLORE LOCKED",
+      350, 1005, 332, 64, unlocked ? "#78c8ff" : "#6e778b",
+      () => this.openPlanetExplore(selected.id));
     this.smallButton(c, "STORY ARCHIVE", 52, 1080, 270, 56, "#b48cff", () => this.openStoryArchive("campaign"));
     this.smallButton(c, "BACK TO TITLE", 340, 1080, 328, 56, "#83bfe9", () => this.goTitle());
     text(c, this.campaignMessage || selected.objective, W / 2, 1168, 13, "#9bb6ce", false);
     text(c, "UP / DOWN SELECT  •  ENTER LAUNCH  •  L ARCHIVE  •  ESC BACK", W / 2, 1214, 12, "#607994");
+  }
+
+  drawPlanetExplore(c) {
+    const sector = this.campaignSector(this.explorationSectorId) || CAMPAIGN_SECTORS[0];
+    const objectives = this.explorationObjectives(sector.id);
+    const done = objectives.filter(objective => this.explorationDone(objective, sector.id)).length;
+    c.fillStyle = "#030713"; c.fillRect(0, 0, W, H);
+    for (let i = 0; i < 84; i++) {
+      const x = (i * 149 + 17) % W, y = (i * 223 + 37) % H;
+      circle(c, x, y, i % 10 === 0 ? 2 : 1, i % 3 === 0 ? "rgba(120,200,255,0.55)" : "rgba(220,230,255,0.28)");
+    }
+    text(c, "PLANETARY SURVEY", W / 2, 54, 31, "#e4f3ff", true);
+    text(c, sector.name + "  /  " + sector.subtitle, W / 2, 91, 13, "#8cb9da", true);
+    const planetColor = sector.biome === "ember" ? "#c84d2f" : sector.biome === "ice" ? "#4faac8" :
+      sector.biome === "void" ? "#5d438f" : "#376fa8";
+    const px = W / 2, py = 282, radius = 112;
+    if (typeof c.createRadialGradient === "function") {
+      const glow = c.createRadialGradient(px, py, 12, px, py, 205);
+      glow.addColorStop(0, sector.biome === "ember" ? "rgba(255,100,55,0.3)" :
+        sector.biome === "ice" ? "rgba(100,220,255,0.3)" :
+        sector.biome === "void" ? "rgba(160,110,255,0.28)" : "rgba(80,160,255,0.28)");
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      c.fillStyle = glow; c.fillRect(px - 210, py - 210, 420, 420);
+    }
+    circle(c, px, py, radius, planetColor);
+    c.save(); c.beginPath(); c.arc(px, py, radius, 0, TAU); c.clip();
+    c.fillStyle = "rgba(255,255,255,0.08)";
+    c.beginPath(); c.ellipse(px - 30, py - 24, 42, 18, -0.4, 0, TAU); c.fill();
+    c.fillStyle = "rgba(0,0,0,0.22)";
+    c.beginPath(); c.ellipse(px + 40, py + 42, 65, 24, 0.5, 0, TAU); c.fill();
+    c.restore();
+    c.strokeStyle = "rgba(170,220,255,0.7)"; c.lineWidth = 2;
+    c.beginPath(); c.ellipse(px, py + 12, radius + 28, 34, -0.18, 0, TAU); c.stroke();
+    circle(c, px + 158, py - 16, 10, "#e6f7ff");
+    circle(c, px + 158, py - 16, 22, "rgba(120,220,255,0.16)");
+    text(c, "SURVEY PROGRESS  " + done + " / " + objectives.length, W / 2, 442, 15, "#b9d7ed", true);
+    objectives.forEach((objective, i) => {
+      const y = 482 + i * 164, completed = this.explorationDone(objective, sector.id);
+      panel(c, 36, y, W - 72, 144, completed ? "rgba(12,42,43,0.9)" : "rgba(8,16,32,0.94)",
+        completed ? "rgba(141,255,206,0.65)" : "rgba(120,190,230,0.28)", 14);
+      circle(c, 70, y + 39, 13, completed ? "#8dffce" : objective.color);
+      text(c, completed ? "DATA SECURED" : "SURVEY " + (i + 1), 98, y + 28, 11,
+        completed ? "#8dffce" : objective.color, true, "left");
+      text(c, objective.title, 58, y + 59, 19, "#e6f3ff", true, "left");
+      text(c, objective.detail, 58, y + 85, 12, "#9fb3cc", false, "left");
+      this.smallButton(c, completed ? "COMPLETE" : "SCAN",
+        500, y + 96, 158, 34, completed ? "#477f76" : objective.color,
+        () => this.completeExplorationObjective(objective.id));
+      text(c, "REWARD  +" + objective.reward + " CRYSTALS", 58, y + 119, 11, "#8dffce", true, "left");
+    });
+    this.smallButton(c, "BACK TO STAR MAP", 52, 1002, W - 104, 58, "#78c8ff", () => { this.state = "campaign"; });
+    text(c, this.explorationMessage || "Optional surveys persist on this device. Complete each scan once for its reward.",
+      W / 2, 1092, 12, "#8aa6c1");
+    text(c, "TAP SCAN  •  KEYS 1–3 SCAN OBJECTIVES  •  ESC / B BACK", W / 2, 1140, 12, "#607994");
+    text(c, this.save.bank + " CRYSTALS BANKED  /  " +
+      (done === objectives.length ? "SECTOR SURVEY COMPLETE" : "OPTIONAL EXPLORATION"),
+      W / 2, 1180, 12, "#8dffce", true);
   }
 
   drawStoryArchive(c) {
@@ -3164,7 +3289,7 @@ function boot() {
 
 if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
-    CAMPAIGN_SECTORS, STORY_ENTRIES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
+    CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
     dateKey, weekKey, mulberry32, W, H };
 else window.addEventListener("load", boot);
