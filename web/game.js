@@ -119,6 +119,38 @@ const MISSION_POOL = [
   { id: "total_powerups", text: "Power-ups collected", metric: "total_powerups", target: 6, reward: 35 },
 ];
 
+const ACHIEVEMENT_DEFS = [
+  { id: "first-flight", title: "FIRST FLIGHT", detail: "Complete your first run.", metric: "runs", target: 1 },
+  { id: "flare-dancer", title: "FLARE DANCER", detail: "Dodge ten solar flares.", metric: "flares", target: 10 },
+  { id: "near-miss-ace", title: "NEAR-MISS ACE", detail: "Record twenty-five near misses.", metric: "near", target: 25 },
+  { id: "surge-breaker", title: "SURGE BREAKER", detail: "Clear three boss encounters.", metric: "bosses", target: 3 },
+  { id: "crystal-archive", title: "CRYSTAL ARCHIVE", detail: "Collect 500 lifetime crystals.", metric: "lifetime", target: 500 },
+  { id: "galaxy-cartographer", title: "GALAXY CARTOGRAPHER", detail: "Chart all four campaign sectors.", metric: "sectors", target: 4 },
+  { id: "signal-decoder", title: "SIGNAL DECODER", detail: "Recover all four story records.", metric: "discoveries", target: 4 },
+  { id: "survey-specialist", title: "SURVEY SPECIALIST", detail: "Complete six planetary surveys.", metric: "surveys", target: 6 },
+  { id: "style-collector", title: "STYLE COLLECTOR", detail: "Unlock eight cosmetic items.", metric: "cosmetics", target: 8 },
+];
+function achievementProgress(save = {}) {
+  const stats = save.stats && typeof save.stats === "object" ? save.stats : {};
+  const campaign = save.campaign && typeof save.campaign === "object" ? save.campaign : {};
+  const completed = Array.isArray(campaign.completed) ? campaign.completed : [];
+  const discoveries = Array.isArray(campaign.discoveries) ? campaign.discoveries : [];
+  const exploration = campaign.exploration && typeof campaign.exploration === "object" ? campaign.exploration : {};
+  const cosmetics = save.cosmetics && Array.isArray(save.cosmetics.owned) ? save.cosmetics.owned : [];
+  const count = value => Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  const values = {
+    runs: count(stats.runs), flares: count(stats.flares), near: count(stats.near),
+    bosses: count(stats.bosses), lifetime: count(save.lifetime),
+    sectors: completed.length, discoveries: discoveries.length,
+    surveys: Object.values(exploration).reduce((sum, ids) => sum + (Array.isArray(ids) ? ids.length : 0), 0),
+    cosmetics: cosmetics.length,
+  };
+  return ACHIEVEMENT_DEFS.map(def => ({
+    ...def, progress: Math.min(def.target, values[def.metric] || 0),
+    unlocked: (values[def.metric] || 0) >= def.target,
+  }));
+}
+
 const CONFIG = (typeof window !== "undefined" && window.ORBIT_CONFIG) || {};
 
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -1652,6 +1684,10 @@ class Game {
     this.applySettings();
     Save.write(this.save);
   }
+  openAchievements() {
+    this.state = "achievements";
+    this.paused = false;
+  }
   openShop() {
     this.state = "shop";
     this.paused = false;
@@ -2056,6 +2092,10 @@ class Game {
       else if (kk === "4") this.openBoard("league");
       else if (kk === "g") this.raceTopGhost();
       else if (kk === "f") this.connectFacebook();
+      return;
+    }
+    if (this.state === "achievements") {
+      if (kk === "escape" || kk === "b" || kk === "q") this.goTitle();
       return;
     }
     if (this.state === "shop") {
@@ -2563,6 +2603,36 @@ class Game {
     text(c, "1-5 toggle - B / ESC back", W / 2, 940, 17, "#828296");
   }
 
+  drawAchievements(c) {
+    this.drawSpace(c, 0, 0);
+    c.fillStyle = "rgba(3,5,16,0.82)"; c.fillRect(0, 0, W, H);
+    const achievements = achievementProgress(this.save);
+    const unlocked = achievements.filter(item => item.unlocked).length;
+    panel(c, 32, 42, W - 64, 1080, "rgba(7,10,22,0.92)", "rgba(255,212,90,0.22)", 24);
+    text(c, "PILOT ACHIEVEMENTS", W / 2, 91, 32, "#ffd45a", true);
+    text(c, `${unlocked} / ${achievements.length} BADGES UNLOCKED`, W / 2, 126, 14, "#9aa6c0", true);
+    achievements.forEach((item, i) => {
+      const col = i % 2, row = Math.floor(i / 2);
+      const x = 48 + col * 324, y = 164 + row * 166;
+      const w = 300, h = 146;
+      panel(c, x, y, w, h,
+        item.unlocked ? "rgba(120,255,140,0.08)" : "rgba(255,255,255,0.025)",
+        item.unlocked ? "rgba(120,255,140,0.5)" : "rgba(120,150,190,0.18)", 12);
+      circle(c, x + 27, y + 29, 12, item.unlocked ? "#8dffce" : "#39445b");
+      text(c, item.unlocked ? "✓" : String(i + 1), x + 27, y + 29, 12,
+        item.unlocked ? "#07131d" : "#9aa6c0", true);
+      text(c, item.title, x + 48, y + 31, 13, item.unlocked ? "#8dffce" : "#e6edf8", true, "left");
+      text(c, item.detail, x + 16, y + 63, 11, "#a9b8cc", false, "left");
+      c.fillStyle = "rgba(255,255,255,0.10)"; c.fillRect(x + 16, y + 91, w - 32, 6);
+      c.fillStyle = item.unlocked ? "#8dffce" : "#78c8ff";
+      c.fillRect(x + 16, y + 91, (w - 32) * item.progress / item.target, 6);
+      text(c, item.unlocked ? "UNLOCKED" : `${item.progress} / ${item.target}`,
+        x + 16, y + 121, 11, item.unlocked ? "#8dffce" : "#9aa6c0", true, "left");
+    });
+    this.button(c, "BACK TO TITLE", 1010, "#c8c8dc", () => this.goTitle(), 58);
+    text(c, "BADGES ARE CALCULATED FROM YOUR EXISTING LOCAL PROGRESS", W / 2, 1092, 12, "#828296");
+  }
+
   drawShop(c) {
     this.drawSpace(c, 0, 0);
     c.fillStyle = "rgba(3,3,10,0.72)"; c.fillRect(0, 0, W, H);
@@ -2674,6 +2744,7 @@ class Game {
     if (this.state === "explore") return this.drawPlanetExplore(c);
     if (this.state === "archive") return this.drawStoryArchive(c);
     if (this.state === "board") return this.drawBoard(c);
+    if (this.state === "achievements") return this.drawAchievements(c);
     if (this.state === "shop") return this.drawShop(c);
     if (this.state === "settings") return this.drawSettings(c);
     if (this.state === "gems" && !this.ads.showing) return this.drawGemStore(c);
@@ -3322,9 +3393,10 @@ class Game {
     [
       ["BOARD", "#b48cff", () => this.openBoard(challengeDay ? "daily" : "weekly")],
       ["CUSTOMIZE", "#ff9adf", () => this.openShop()],
+      ["BADGES", "#ffd45a", () => this.openAchievements()],
       [`GEMS ${this.save.gems}`, "#3cdcb4", () => this.openGemStore("title")],
       ["SETTINGS", "#78c8dc", () => this.openSettings()],
-    ].forEach(([label, col, fn], i) => this.smallButton(c, label, 80 + i * 144, 1034, 128, 62, col, fn));
+    ].forEach(([label, col, fn], i) => this.smallButton(c, label, 28 + i * 134, 1034, 124, 62, col, fn));
 
     const dailyBest = this.save.daily.date === dailyDate ? this.save.daily.best : 0;
     const rankedBest = this.save.ranked.week === (challengeWeek || weekKey()) ? this.save.ranked.best : 0;
@@ -3622,6 +3694,7 @@ function boot() {
     story: "Story archive. Browse the unlocked entries and return to the star map or title.",
     settings: "Settings. Toggle visual effects, audio, and display options.",
     shop: "Cosmetics shop. Browse items and equip or unlock available cosmetics.",
+    achievements: "Pilot achievements. Review unlocked badges and progress toward future badges.",
     board: "Leaderboard. Browse tabs, refresh results, or return to the title.",
     gems: "Gem store. Browse packs and return when finished."
   }[state] || "Orbit Runner screen changed.");
@@ -3660,5 +3733,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);

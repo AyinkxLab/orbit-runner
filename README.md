@@ -153,6 +153,7 @@ runs keep their existing pause layout and rules.
 - Planetary surveys show sector-specific environmental conditions, hazards, research focus, and field notes while reusing the existing 12 optional objectives and rewards.
 - Campaign boss encounters now use sector-specific profiles, with distinct core movement, target-ring patterns, timers, and names. Daily/ranked runs keep the standard Corona Surge profile.
 - The existing cosmetics shop has a live preview for ship skins, trails, and titles. Preview selection does not equip or purchase an item; the existing BUY/EQUIP action remains explicit.
+- The title screen links to a pilot badge board with progress derived from existing run stats, campaign discoveries, surveys, lifetime crystals, and cosmetics. Achievements add no separate save schema or gameplay advantage.
 
 ### Realism pass
 
