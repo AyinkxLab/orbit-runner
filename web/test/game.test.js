@@ -1126,3 +1126,14 @@ test("gem streaks pay a bonus from the third crystal in a row", () => {
   assert.equal(gemStreakBonus(3), 1.5);
   assert.equal(gemStreakBonus(9), 1.5);
 });
+
+test("a level cleared without damage pays two crystals", () => {
+  localStore();
+  const g = newGame();
+  g.start("classic");
+  g.elapsed = 14.9; g.levelHit = false;
+  const before = g.crystals;
+  g.update(0.2);
+  assert.equal(g.crystals, before + 2);
+  delete global.localStorage;
+});

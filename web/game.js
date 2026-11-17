@@ -1323,7 +1323,7 @@ class Game {
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
       reverseGrace: 0, slings: 0, lastSlingT: -99, beatHit: -1, flowT: 0, flowRing: -1,
       gravity: null, gravityT: 16, patternT: 9, patternWarn: null, modifier: null, weather: null,
-      gemStreak: 0, gemStreakT: 0,
+      gemStreak: 0, gemStreakT: 0, levelHit: false,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
       newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
@@ -2440,7 +2440,7 @@ class Game {
     if (onRing && this.invuln <= 0) {
       if (this.shield) {
         this.shield = false; this.invuln = 1.2; Sfx.play("shield"); Sfx.noise(160, 0.10, 700); vibrate(80);
-        this.flowT = 0; this.flowRing = -1;
+        this.flowT = 0; this.flowRing = -1; this.levelHit = true;
         this.hitStop = 0.06; this.flash = Math.max(this.flash, 0.25);
         this.burst(px, py, ["#78c8ff"], 30, 280, .7);
       } else {
@@ -2570,6 +2570,11 @@ class Game {
     if (this.level > oldLevel) {
       this.float(CX, CY - 120, `LEVEL ${this.level} - ${this.levelName}`, "#ffd45a");
       Sfx.play("level"); Sfx.play("pad");
+      if (!this.levelHit) {
+        this.crystals += 2; this.crystalGain += 2; this.save.lifetime += 2;
+        this.float(CX, CY - 160, "CLEAN LEVEL +2", "#78ff8c");
+      }
+      this.levelHit = false;
       this.weather = weatherAt(this.seed, this.level);
       if (this.level % 5 === 0) this.startBoss();
     }
@@ -2751,7 +2756,7 @@ class Game {
         if (this.invuln > 0) { alive.push(m); continue; }
         if (this.shield) {
           this.shield = false; this.invuln = 1.2; Sfx.play("shield"); vibrate(60);
-          this.flowT = 0; this.flowRing = -1;
+          this.flowT = 0; this.flowRing = -1; this.levelHit = true;
           this.hitStop = Math.max(this.hitStop, 0.06); this.flash = Math.max(this.flash, 0.2);
           if (m.kind === "volatile") this.explodeMeteor(m);
           this.burst(mx, my, ["#78c8ff"], 30, 280, .7); continue;
