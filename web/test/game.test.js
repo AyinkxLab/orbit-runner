@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, patternAngles, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, mulberry32, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -1022,5 +1022,33 @@ test("telegraphed patterns fire a symmetric fan of three rocks", () => {
   g.update(0.02);
   assert.equal(g.meteors.length, 3);
   assert.equal(g.patternWarn, null);
+  delete global.localStorage;
+});
+
+test("run modifiers are deterministic and only touch classic runs", () => {
+  const a = pickModifier(mulberry32(9));
+  const b = pickModifier(mulberry32(9));
+  assert.equal(a.id, b.id);
+  assert.ok(RUN_MODIFIERS.includes(a));
+  localStore();
+  const g = newGame();
+  g.scoreMul = 1; g.crystalMul = 1; g.meteorMul = 1; g.flareCD = 12;
+  g.applyModifier(RUN_MODIFIERS[0]);
+  assert.equal(g.modifier.id, "rich");
+  assert.equal(g.crystalMul, 2);
+  assert.equal(g.scoreMul, 1);
+  assert.ok(g.meteorMul > 1);
+  g.start("ranked");
+  assert.equal(g.modifier, null);
+  delete global.localStorage;
+});
+
+test("classic runs pick a modifier once the tutorial is over", () => {
+  localStore();
+  const g = newGame();
+  g.save.tutorial.done = true;
+  g.start("classic");
+  assert.ok(g.modifier);
+  assert.ok(RUN_MODIFIERS.some(m => m.id === g.modifier.id));
   delete global.localStorage;
 });
