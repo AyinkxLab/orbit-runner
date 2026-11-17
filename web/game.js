@@ -2551,12 +2551,13 @@ class Game {
 
     const speedScale = this.slowT > 0 ? 0.5 : 1;
     const alive = [];
+    const spawned = [];
     for (const m of this.meteors) {
       if (m.dead) continue;
       if (m.flung) {
-        m.fx += m.vx * dt; m.fy += m.vy * dt; m.flungT -= dt;
-        if (m.flungT <= 0 || m.fx < -60 || m.fx > W + 60 || m.fy < -60 || m.fy > H + 60) { m.dead = true; continue; }
-        alive.push(m); continue;
+        this.updateFlung(m, dt, spawned);
+        if (!m.dead) alive.push(m);
+        continue;
       }
       if (m.kind === "splitter" && !m.split && m.r < 230) {
         m.split = true;
@@ -2618,6 +2619,7 @@ class Game {
       alive.push(m);
     }
     this.meteors = alive.filter(m => !m.dead);
+    for (const s of spawned) if (!s.dead) this.meteors.push(s);
 
     this.gems = this.gems.filter(g => {
       g.life -= dt;
@@ -2658,6 +2660,51 @@ class Game {
         Sfx.play("power"); vibrate(30);
         this.boss.core = null; this.boss.coreT = this.boss.coreDelay;
         if (this.boss && this.boss.cores >= this.boss.need) this.clearBoss();
+      }
+    }
+  }
+
+  // A flung rock carries momentum and can chain through up to two more rocks.
+  updateFlung(m, dt, spawned) {
+    m.fx += m.vx * dt; m.fy += m.vy * dt;
+    m.flungT -= dt;
+    m.rot = (m.rot || 0) - 8 * dt;
+    if (m.flungT <= 0 || m.fx < -60 || m.fx > W + 60 || m.fy < -60 || m.fy > H + 60) {
+      m.dead = true; return;
+    }
+    for (const other of this.meteors) {
+      if (other === m || other.dead || other.flung) continue;
+      const ox = CX + Math.cos(other.angle) * other.r;
+      const oy = CY + Math.sin(other.angle) * other.r;
+      if (Math.hypot(ox - m.fx, oy - m.fy) >= m.size + other.size + 6) continue;
+      other.dead = true;
+      const pts = Math.round(70 * this.combo * this.scoreMul);
+      this.score += pts; this.bumpCombo();
+      this.float(m.fx, m.fy, `CHAIN +${pts}`, "#a8ff8c");
+      this.burst(ox, oy, ["#a8ff8c", "#7affb0"], 18, 220, .5);
+      Sfx.play("power");
+      if ((m.chain || 0) < 2) {
+        const len = Math.hypot(m.vx, m.vy) || 1;
+        const power = Math.min(420, len * 0.8);
+        spawned.push({ ...other, dead: false, flung: true, near: false,
+          fx: ox, fy: oy, vx: m.vx / len * power, vy: m.vy / len * power,
+          flungT: SLING_LIFE, chain: (m.chain || 0) + 1 });
+      }
+      break;
+    }
+    if (this.boss && this.boss.core) {
+      const core = this.boss.core;
+      const gx = CX + Math.cos(core.angle) * RINGS[core.ring];
+      const gy = CY + Math.sin(core.angle) * RINGS[core.ring];
+      if (Math.hypot(gx - m.fx, gy - m.fy) < 40) {
+        this.boss.cores++;
+        const pts = Math.round(250 * this.level * this.scoreMul);
+        this.score += pts;
+        this.float(gx, gy, `SLING CORE +${pts}`, "#a8ff8c");
+        this.burst(gx, gy, ["#a8ff8c", "#ffd45a"], 30, 280, .7);
+        this.hitStop = Math.max(this.hitStop, 0.05);
+        this.boss.core = null; this.boss.coreT = this.boss.coreDelay;
+        if (this.boss.cores >= this.boss.need) this.clearBoss();
       }
     }
   }
