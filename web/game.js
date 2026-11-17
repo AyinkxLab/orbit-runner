@@ -314,6 +314,10 @@ function patternAngles(base, count = 3, spread = 0.55) {
   return out;
 }
 
+function dailyModifier(day) {
+  return pickModifier(mulberry32(hashStr("orbit-daily-mod-" + day)));
+}
+
 function flareWarningText(secondsRemaining, ringIndex) {
   const ring = RING_NAMES[ringIndex];
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
@@ -1360,6 +1364,7 @@ class Game {
     this.reset();
     this.applyLoadout();
     if (mode === "classic" && this.save.tutorial.done) this.applyModifier(pickModifier(this.rng));
+    if (mode === "daily") this.applyModifier(dailyModifier(this.dailyDate));
     this.runToken = null;
     this.tutorialActive = mode === "classic" && !this.save.tutorial.done;
     this.tutorialStep = this.save.tutorial.step || 0;
@@ -4113,5 +4118,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, METEOR_GLYPHS, RUN_MODIFIERS, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, dailyModifier, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
