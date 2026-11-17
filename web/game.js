@@ -24,6 +24,9 @@ const MAGNET_TIME = 8;
 const SLOW_TIME = 6;
 const MAX_COMBO = 8;
 const MAX_ADS = 4;
+const SLING_RADIUS = 95;
+const SLING_SPEED = 520;
+const SLING_LIFE = 1.2;
 const POWERUP_TIME = 10;
 const TAU = Math.PI * 2;
 const LEVEL_NAMES = ["DUST", "EMBER", "FLARE", "CORONA", "NOVA", "PULSAR", "QUASAR", "VOID"];
@@ -67,6 +70,23 @@ const METEOR_TYPES = [
   { id: "volatile", weight: 6, size: 1.05, speed: 0.95, near: 1, color: "#a05a3c", shade: "#602a1a" },
   { id: "splitter", weight: 5, size: 1.10, speed: 0.90, near: 1, color: "#7a8a6a", shade: "#4a5a3a" },
 ];
+
+const METEOR_GLYPHS = {
+  normal: "circle", iron: "square", ice: "diamond",
+  gold: "star", volatile: "triangle", splitter: "cross",
+};
+function meteorGlyph(kind) { return METEOR_GLYPHS[kind] || "circle"; }
+
+const RUN_MODIFIERS = [
+  { id: "rich", name: "RICH RINGS", desc: "2x crystals, faster rocks", crystal: 2, speed: 1.15, score: 1, flare: 1 },
+  { id: "thin", name: "THIN AIR", desc: "Slower rocks, 0.9x score", crystal: 1, speed: 0.85, score: 0.9, flare: 1 },
+  { id: "storm", name: "STORM SEASON", desc: "Frequent flares, 1.15x score", crystal: 1, speed: 1, score: 1.15, flare: 0.7 },
+  { id: "glass", name: "GLASS CANNON", desc: "1.25x score, faster rocks", crystal: 1, speed: 1.1, score: 1.25, flare: 1 },
+];
+function pickModifier(rng) {
+  const roll = typeof rng === "function" ? rng() : Math.random();
+  return RUN_MODIFIERS[Math.floor(roll * RUN_MODIFIERS.length)] || RUN_MODIFIERS[0];
+}
 
 const GEM_PACKS = [
   { id: "pocket", name: "POCKET", gems: 80, price: "$0.99", productId: "orbit_gems_80" },
@@ -234,6 +254,55 @@ function missionTarget(template, best) {
   if (template.metric === "run_score") return Math.max(target, Math.floor((best || 0) * 0.5));
   if (template.metric === "run_level") return Math.max(target, Math.min(10, 4 + Math.floor((best || 0) / 5000)));
   return target;
+}
+
+function slingshotTarget(meteors, px, py, radius = SLING_RADIUS) {
+  let best = null, bestD = radius;
+  for (const m of meteors || []) {
+    if (!m || m.dead || m.flung) continue;
+    const x = CX + Math.cos(m.angle) * m.r, y = CY + Math.sin(m.angle) * m.r;
+    const d = Math.hypot(x - px, y - py);
+    if (d <= bestD) { bestD = d; best = m; }
+  }
+  return best;
+}
+
+function flingVelocity(px, py, tx, ty, angularVel) {
+  const dx = tx - px, dy = ty - py, d = Math.hypot(dx, dy);
+  let nx, ny;
+  if (d < 1) {
+    const ox = px - CX, oy = py - CY, od = Math.hypot(ox, oy) || 1;
+    nx = ox / od; ny = oy / od;
+  } else { nx = dx / d; ny = dy / d; }
+  const sign = Math.sign(angularVel) || 1;
+  return [(nx * 0.65 - ny * 0.55 * sign) * SLING_SPEED, (ny * 0.65 + nx * 0.55 * sign) * SLING_SPEED];
+}
+
+function slingPreview(px, py, vx, vy, steps = 5, gap = 0.05) {
+  const pts = [];
+  for (let i = 1; i <= steps; i++) pts.push([px + vx * gap * i, py + vy * gap * i]);
+  return pts;
+}
+
+function slingHintVisible(tutorialActive, slings, elapsed) {
+  return !!tutorialActive && slings === 0 && elapsed > 6;
+}
+
+function isOnBeat(musicT, interval, tolerance = 0.14) {
+  if (!(interval > 0)) return false;
+  return musicT <= tolerance || musicT >= interval - tolerance;
+}
+
+function gravityStep(x, y, wx, wy, dt, strength = 90) {
+  const dx = wx - x, dy = wy - y, d = Math.hypot(dx, dy);
+  if (!(d > 0) || !(dt > 0)) return [x, y];
+  return [x + dx / d * strength * dt, y + dy / d * strength * dt];
+}
+
+function patternAngles(base, count = 3, spread = 0.55) {
+  const out = [];
+  for (let i = 0; i < count; i++) out.push(base + (i - (count - 1) / 2) * spread);
+  return out;
 }
 
 function flareWarningText(secondsRemaining, ringIndex) {
@@ -1224,7 +1293,8 @@ class Game {
       bossesCleared: 0, boss: null, hitStop: 0, flash: 0, musicT: 0.7, musicBeat: 0, trailT: 0,
       shocks: [], shooting: [], shootingT: 2.5, shipTrail: [],
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
-      reverseGrace: 0,
+      reverseGrace: 0, slings: 0, lastSlingT: -99, beatHit: -1,
+      gravity: null, gravityT: 16, patternT: 9, patternWarn: null, modifier: null,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
       newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
@@ -1280,6 +1350,7 @@ class Game {
     this.applyCosmetics();
     this.reset();
     this.applyLoadout();
+    if (mode === "classic" && this.save.tutorial.done) this.applyModifier(pickModifier(this.rng));
     this.runToken = null;
     this.tutorialActive = mode === "classic" && !this.save.tutorial.done;
     this.tutorialStep = this.save.tutorial.step || 0;
@@ -1306,6 +1377,14 @@ class Game {
     this.flareCD = (this.contract.flareRate || 12) * this.biome.flareRate;
     // orbital speed at the current radius, with inertia added in update()
     this.angularVel = this.dir * (1.6 + 0.08) * this.ship.ringSpeed;
+  }
+  applyModifier(mod) {
+    this.modifier = mod || null;
+    if (!mod) return;
+    this.crystalMul *= mod.crystal;
+    this.meteorMul *= mod.speed;
+    this.scoreMul *= mod.score;
+    this.flareCD *= mod.flare;
   }
   applyCosmetics() {
     const eq = this.save.cosmetics.equipped;
@@ -2115,6 +2194,34 @@ class Game {
     return newlyCompleted;
   }
 
+  trySlingshot() {
+    const [px, py] = this.playerPos();
+    const target = slingshotTarget(this.meteors, px, py);
+    if (!target) return false;
+    const tx = CX + Math.cos(target.angle) * target.r, ty = CY + Math.sin(target.angle) * target.r;
+    const [vx, vy] = flingVelocity(px, py, tx, ty, this.angularVel);
+    target.dead = true;
+    this.meteors.push({ ...target, dead: false, flung: true, fx: tx, fy: ty, vx, vy, flungT: SLING_LIFE, chain: 0 });
+    const pts = Math.round(40 * this.combo * this.scoreMul);
+    this.score += pts; this.bumpCombo();
+    this.slings++; this.lastSlingT = this.runTime;
+    this.float(px, py - 40, `SLING +${pts}`, "#a8ff8c");
+    this.addShock(px, py, "#a8ff8c", 90, 0.35);
+    Sfx.play("power");
+    return true;
+  }
+
+  tryBeatBonus() {
+    const interval = Math.max(0.32, 0.7 - 0.03 * this.level);
+    if (!isOnBeat(this.musicT, interval) || this.beatHit === this.musicBeat) return false;
+    this.beatHit = this.musicBeat;
+    const pts = Math.round(20 * this.combo * this.scoreMul);
+    this.score += pts; this.bumpCombo();
+    this.float(CX, CY - 70, `ON BEAT +${pts}`, "#78e6ff");
+    Sfx.play("near");
+    return true;
+  }
+
   // ---- input ------------------------------------------------------------
   action(a) {
     if (this.paused) return;
@@ -2122,7 +2229,11 @@ class Game {
     if (this.state !== "play") return;
     if (a === "up" && this.ring < 2) this.ring++;
     else if (a === "down" && this.ring > 0) this.ring--;
-    else if (a === "reverse" || a === "tap") { this.dir *= -1; this.reverseGrace = 0.5; }
+    else if (a === "reverse" || a === "tap") {
+      this.dir *= -1; this.reverseGrace = 0.5;
+      if (a === "tap") this.trySlingshot();
+      this.tryBeatBonus();
+    }
     else return;
     Sfx.play("jump");
   }
@@ -2476,6 +2587,34 @@ class Game {
     }
     this.updateBoss(dt);
 
+    // gravity wells bend incoming rocks toward a single point
+    if (this.gravity) {
+      this.gravity.life -= dt;
+      if (this.gravity.life <= 0) { this.gravity = null; this.gravityT = this.rnd(14, 24); }
+    } else if (!this.boss && (this.gravityT -= dt) <= 0) {
+      this.gravity = { angle: this.rnd(0, TAU), ring: this.rndInt(3), life: 5 };
+      this.float(CX, CY - 240, "GRAVITY WELL", "#b48cff");
+      Sfx.play("warn");
+    }
+
+    // telegraphed fan patterns punish standing still without new art
+    if (this.patternWarn) {
+      this.patternWarn.t -= dt;
+      if (this.patternWarn.t <= 0) {
+        const warn = this.patternWarn;
+        this.patternWarn = null;
+        for (const a of patternAngles(warn.angle, 3, 0.55)) {
+          this.meteors.push(this.spawnMeteor(a, (120 + 12 * lvl) * this.meteorMul,
+            this.rnd(14, 22), this.pickMeteorType().id));
+        }
+        this.patternT = this.rnd(10, 16);
+        Sfx.play("warn");
+      }
+    } else if (!this.boss && lvl >= 3 && (this.patternT -= dt) <= 0) {
+      this.patternWarn = { angle: this.rnd(0, TAU), ring: this.rndInt(3), t: 1.2 };
+      this.float(CX, CY - 220, "PATTERN INCOMING", "#ff9a3c");
+    }
+
     // Spawn meteors. The first-run tutorial gets more breathing room;
     // ranked/daily and experienced runs keep the established difficulty curve.
     const pacing = difficultyProfile(lvl, { tutorial: this.tutorialActive, competitive: this.competitive });
@@ -2509,8 +2648,14 @@ class Game {
 
     const speedScale = this.slowT > 0 ? 0.5 : 1;
     const alive = [];
+    const spawned = [];
     for (const m of this.meteors) {
       if (m.dead) continue;
+      if (m.flung) {
+        this.updateFlung(m, dt, spawned);
+        if (!m.dead) alive.push(m);
+        continue;
+      }
       if (m.kind === "splitter" && !m.split && m.r < 230) {
         m.split = true;
         for (const off of [-0.16, 0.16]) {
@@ -2529,6 +2674,22 @@ class Game {
       m.angle += (m.spin + 26 / Math.max(80, m.r)) * dt;
       m.rot = (m.rot || 0) + (m.spin + 0.5) * dt;
       m.r -= m.speed * speedScale * entryMul * dt;
+      if (this.gravity) {
+        const wx = CX + Math.cos(this.gravity.angle) * RINGS[this.gravity.ring];
+        const wy = CY + Math.sin(this.gravity.angle) * RINGS[this.gravity.ring];
+        const bx = CX + Math.cos(m.angle) * m.r, by = CY + Math.sin(m.angle) * m.r;
+        const [nx, ny] = gravityStep(bx, by, wx, wy, dt);
+        m.r = Math.hypot(nx - CX, ny - CY);
+        m.angle = Math.atan2(ny - CY, nx - CX);
+        if (Math.hypot(nx - wx, ny - wy) < 18) {
+          const pts = Math.round(60 * this.combo * this.scoreMul);
+          this.score += pts; this.bumpCombo();
+          this.float(wx, wy, `GRAVITY +${pts}`, "#b48cff");
+          this.burst(wx, wy, ["#b48cff", "#78e6ff"], 18, 220, .6);
+          Sfx.play("power");
+          continue;
+        }
+      }
       const mx = CX + Math.cos(m.angle) * m.r, my = CY + Math.sin(m.angle) * m.r;
       const d = segDist(px, py, prevX, prevY, mx, my), hitR = m.size + 9;
       if (d < hitR) {
@@ -2571,6 +2732,7 @@ class Game {
       alive.push(m);
     }
     this.meteors = alive.filter(m => !m.dead);
+    for (const s of spawned) if (!s.dead) this.meteors.push(s);
 
     this.gems = this.gems.filter(g => {
       g.life -= dt;
@@ -2611,6 +2773,51 @@ class Game {
         Sfx.play("power"); vibrate(30);
         this.boss.core = null; this.boss.coreT = this.boss.coreDelay;
         if (this.boss && this.boss.cores >= this.boss.need) this.clearBoss();
+      }
+    }
+  }
+
+  // A flung rock carries momentum and can chain through up to two more rocks.
+  updateFlung(m, dt, spawned) {
+    m.fx += m.vx * dt; m.fy += m.vy * dt;
+    m.flungT -= dt;
+    m.rot = (m.rot || 0) - 8 * dt;
+    if (m.flungT <= 0 || m.fx < -60 || m.fx > W + 60 || m.fy < -60 || m.fy > H + 60) {
+      m.dead = true; return;
+    }
+    for (const other of this.meteors) {
+      if (other === m || other.dead || other.flung) continue;
+      const ox = CX + Math.cos(other.angle) * other.r;
+      const oy = CY + Math.sin(other.angle) * other.r;
+      if (Math.hypot(ox - m.fx, oy - m.fy) >= m.size + other.size + 6) continue;
+      other.dead = true;
+      const pts = Math.round(70 * this.combo * this.scoreMul);
+      this.score += pts; this.bumpCombo();
+      this.float(m.fx, m.fy, `CHAIN +${pts}`, "#a8ff8c");
+      this.burst(ox, oy, ["#a8ff8c", "#7affb0"], 18, 220, .5);
+      Sfx.play("power");
+      if ((m.chain || 0) < 2) {
+        const len = Math.hypot(m.vx, m.vy) || 1;
+        const power = Math.min(420, len * 0.8);
+        spawned.push({ ...other, dead: false, flung: true, near: false,
+          fx: ox, fy: oy, vx: m.vx / len * power, vy: m.vy / len * power,
+          flungT: SLING_LIFE, chain: (m.chain || 0) + 1 });
+      }
+      break;
+    }
+    if (this.boss && this.boss.core) {
+      const core = this.boss.core;
+      const gx = CX + Math.cos(core.angle) * RINGS[core.ring];
+      const gy = CY + Math.sin(core.angle) * RINGS[core.ring];
+      if (Math.hypot(gx - m.fx, gy - m.fy) < 40) {
+        this.boss.cores++;
+        const pts = Math.round(250 * this.level * this.scoreMul);
+        this.score += pts;
+        this.float(gx, gy, `SLING CORE +${pts}`, "#a8ff8c");
+        this.burst(gx, gy, ["#a8ff8c", "#ffd45a"], 30, 280, .7);
+        this.hitStop = Math.max(this.hitStop, 0.05);
+        this.boss.core = null; this.boss.coreT = this.boss.coreDelay;
+        if (this.boss.cores >= this.boss.need) this.clearBoss();
       }
     }
   }
@@ -2927,17 +3134,40 @@ class Game {
       text(c, "C", gx, gy + 1, 20, "#ffd45a", true);
     }
 
+    if (this.gravity) {
+      const gx = CX + Math.cos(this.gravity.angle) * RINGS[this.gravity.ring] + ox;
+      const gy = CY + Math.sin(this.gravity.angle) * RINGS[this.gravity.ring] + oy;
+      const pulse = 1 + 0.1 * Math.sin(this.time * 8);
+      c.globalAlpha = 0.16; circle(c, gx, gy, 44 * pulse, "#b48cff"); c.globalAlpha = 1;
+      circle(c, gx, gy, 26, "rgba(180,140,255,0.35)", 3);
+      circle(c, gx, gy, 13, "#0c0a14");
+      text(c, "G", gx, gy + 1, 16, "#d8c8ff", true);
+    }
+
+    if (this.patternWarn) {
+      const warn = this.patternWarn, rr = RINGS[warn.ring];
+      c.globalAlpha = 0.45 + 0.35 * Math.sin(this.time * 16);
+      c.strokeStyle = "#ff9a3c"; c.lineWidth = 5;
+      for (const a of patternAngles(warn.angle, 3, 0.55)) {
+        c.beginPath(); c.arc(CX + ox, CY + oy, rr, a - 0.14, a + 0.14); c.stroke();
+      }
+      c.globalAlpha = 1;
+      text(c, "INCOMING", CX + ox, CY + oy - rr - 16, 15, "#ff9a3c", true);
+    }
+
     for (const m of this.meteors) {
       if (m.dead) continue;
-      const mx = CX + Math.cos(m.angle) * m.r + ox, my = CY + Math.sin(m.angle) * m.r + oy;
+      const mx = (m.flung ? m.fx : CX + Math.cos(m.angle) * m.r) + ox;
+      const my = (m.flung ? m.fy : CY + Math.sin(m.angle) * m.r) + oy;
       const slow = this.slowT > 0;
       const mt = this.meteorType(m.kind);
       // re-entry tail
       const tailR = m.r + m.speed * 0.10;
-      const tx = CX + Math.cos(m.angle) * tailR + ox, ty = CY + Math.sin(m.angle) * tailR + oy;
-      c.globalAlpha = 0.22; c.strokeStyle = slow ? "#8a7ab0" : mt.color; c.lineWidth = m.size * 0.9;
+      const tx = m.flung ? mx - m.vx * 0.09 : CX + Math.cos(m.angle) * tailR + ox;
+      const ty = m.flung ? my - m.vy * 0.09 : CY + Math.sin(m.angle) * tailR + oy;
+      c.globalAlpha = 0.22; c.strokeStyle = m.flung ? "#a8ff8c" : slow ? "#8a7ab0" : mt.color; c.lineWidth = m.size * 0.9;
       c.beginPath(); c.moveTo(tx, ty); c.lineTo(mx, my); c.stroke(); c.globalAlpha = 1;
-      const glowCol = m.kind === "gold" ? "rgba(255,212,90,0.14)"
+      const glowCol = m.flung ? "rgba(168,255,140,0.18)" : m.kind === "gold" ? "rgba(255,212,90,0.14)"
         : m.kind === "volatile" ? "rgba(255,90,40,0.14)"
         : m.kind === "ice" ? "rgba(100,220,255,0.12)"
         : slow ? "rgba(120,90,180,0.08)" : "rgba(255,110,50,0.09)";
@@ -2953,13 +3183,32 @@ class Game {
         else c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
       }
       c.closePath();
-      c.fillStyle = slow ? "#6a5a88" : mt.color; c.fill();
-      c.lineWidth = 2; c.strokeStyle = slow ? "#9a8ac0" : mt.shade; c.stroke();
+      c.fillStyle = m.flung ? "#8cf0a0" : slow ? "#6a5a88" : mt.color; c.fill();
+      c.lineWidth = 2; c.strokeStyle = m.flung ? "#d8ffd0" : slow ? "#9a8ac0" : mt.shade; c.stroke();
       c.fillStyle = slow ? "#4a3e62" : mt.shade;
       circle(c, -m.size * 0.25, -m.size * 0.2, m.size * 0.22);
       circle(c, m.size * 0.3, m.size * 0.25, m.size * 0.15);
       c.restore();
-      if (m.r > 380) circle(c, CX + Math.cos(m.angle) * 370, CY + Math.sin(m.angle) * 370, 4, "#ff5050");
+      if (this.save.settings.colorblind && !m.flung) {
+        const glyph = meteorGlyph(m.kind);
+        circle(c, mx, my, m.size * 0.6, "rgba(0,0,0,0.45)");
+        c.save(); c.translate(mx, my); c.strokeStyle = "#fff"; c.lineWidth = 2;
+        c.beginPath();
+        if (glyph === "square") c.rect(-5, -5, 10, 10);
+        else if (glyph === "diamond") { c.moveTo(0, -7); c.lineTo(6, 0); c.lineTo(0, 7); c.lineTo(-6, 0); c.closePath(); }
+        else if (glyph === "triangle") { c.moveTo(0, -7); c.lineTo(6, 5); c.lineTo(-6, 5); c.closePath(); }
+        else if (glyph === "star") {
+          for (let i = 0; i < 10; i++) {
+            const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? 3 : 7;
+            if (i === 0) c.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+            else c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+          }
+          c.closePath();
+        } else if (glyph === "cross") { c.moveTo(-6, 0); c.lineTo(6, 0); c.moveTo(0, -6); c.lineTo(0, 6); }
+        else c.arc(0, 0, 5, 0, TAU);
+        c.stroke(); c.restore();
+      }
+      if (m.r > 380 && !m.flung) circle(c, CX + Math.cos(m.angle) * 370, CY + Math.sin(m.angle) * 370, 4, "#ff5050");
     }
 
     if (this.state === "play") {
@@ -2968,6 +3217,17 @@ class Game {
       const livery = this.skinLivery || SKIN_LIVERIES.scout;
       const facing = Math.sign(this.angularVel) || this.dir;
       const a = this.angle + facing * Math.PI / 2;
+      const aim = slingshotTarget(this.meteors, px, py);
+      if (aim) {
+        const tx = CX + Math.cos(aim.angle) * aim.r, ty = CY + Math.sin(aim.angle) * aim.r;
+        const [vx, vy] = flingVelocity(px, py, tx, ty, this.angularVel);
+        const pts = slingPreview(px, py, vx, vy);
+        c.save(); c.globalAlpha = 0.55; c.strokeStyle = "#a8ff8c"; c.lineWidth = 2;
+        if (c.setLineDash) c.setLineDash([7, 9]);
+        c.beginPath(); c.moveTo(px + ox, py + oy);
+        for (const [x, y] of pts) c.lineTo(x + ox, y + oy);
+        c.stroke(); c.restore();
+      }
       if (this.magnetT > 0) {
         for (const g of this.gems) {
           const gx = CX + Math.cos(g.angle) * RINGS[g.ring], gy = CY + Math.sin(g.angle) * RINGS[g.ring];
@@ -3081,10 +3341,11 @@ class Game {
   drawHud(c) {
     const mode = this.mode === "daily" ? "DAILY"
       : this.mode === "ranked" ? "RANKED" : this.contract.name;
+    const runLabel = this.modifier ? `${mode} · ${this.modifier.name}` : mode;
     panel(c, 16, 14, 280, 88, "rgba(7,11,22,0.78)", "rgba(120,200,255,0.18)");
     text(c, `SCORE`, 30, 38, 15, "#7f8ba3", true, "left");
     text(c, `${Math.floor(this.score)}`, 30, 64, 36, "#fff", true, "left");
-    text(c, `LV ${this.level} ${this.levelName} - ${mode} - ${this.biome.name}`, 30, 86, 13, "#9aa6c0", false, "left");
+    text(c, `LV ${this.level} ${this.levelName} - ${runLabel} - ${this.biome.name}`, 30, 86, 13, "#9aa6c0", false, "left");
     const levelPct = (this.elapsed % 15) / 15;
     c.fillStyle = "#1c2236"; c.fillRect(30, 96, 252, 4);
     c.fillStyle = "#78e6ff"; c.fillRect(30, 96, 252 * levelPct, 4);
@@ -3110,6 +3371,7 @@ class Game {
     if (this.shield) chips.push(["SHIELD", "#78c8ff"]);
     if (this.magnetT > 0) chips.push([`MAGNET ${this.magnetT.toFixed(1)}`, "#ff78dc"]);
     if (this.slowT > 0) chips.push([`WARP ${this.slowT.toFixed(1)}`, "#b48cff"]);
+    if (this.runTime - this.lastSlingT < 2) chips.push([`SLING x${this.slings}`, "#a8ff8c"]);
     chips.forEach(([s, col], i) => {
       const x = 24 + i * 150;
       panel(c, x, 122, 140, 24, "rgba(8,12,24,0.55)", "rgba(255,255,255,0.08)", 8);
@@ -3117,6 +3379,10 @@ class Game {
     });
     if (this.ghost && this.mode === "classic")
       text(c, `GHOST ${this.ghost.score}`, 30, 196, 14, "#5c6f8a", false, "left");
+    if (slingHintVisible(this.tutorialActive, this.slings, this.elapsed))
+      text(c, "TAP TO WHIP", W / 2, H - 210, 18, "#a8ff8c", true);
+    if (isOnBeat(this.musicT, Math.max(0.32, 0.7 - 0.03 * this.level)))
+      text(c, "BEAT", 30, 214, 13, "#78e6ff", true, "left");
 
     if (this.boss) {
       const surgeRemaining = Math.max(0, this.boss.timer);
@@ -3814,6 +4080,6 @@ function boot() {
 if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
-    SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, METEOR_GLYPHS, RUN_MODIFIERS, SHOP_ITEMS,
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, gravityStep, patternAngles, pickModifier, meteorGlyph, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);

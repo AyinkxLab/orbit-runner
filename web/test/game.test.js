@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, meteorGlyph, METEOR_TYPES, mulberry32, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -850,6 +850,34 @@ test("reverse orbit earns a close-pass bonus once", () => {
   assert.equal(g.meteors[0].near, true);
 });
 
+test("a slung rock chains into nearby meteors and can break a boss core", () => {
+  const g = newGame();
+  g.start();
+  g.angle = 0; g.ringVis = 130;
+  const [px, py] = g.playerPos();
+  const flung = { angle: 0, r: 130, speed: 0, size: 12, kind: "normal", spin: 0,
+    dead: false, flung: true, fx: px, fy: py, vx: 300, vy: 0, flungT: 1, chain: 0 };
+  const other = { angle: 0, r: 150, speed: 0, size: 12, kind: "normal", spin: 0, dead: false };
+  g.meteors = [flung, other];
+  const spawned = [];
+  const before = g.score;
+  g.updateFlung(flung, 0.01, spawned);
+  assert.equal(other.dead, true);
+  assert.equal(spawned.length, 1);
+  assert.equal(spawned[0].chain, 1);
+  assert.equal(spawned[0].flung, true);
+  assert.ok(g.score > before);
+
+  g.boss = { core: { angle: 0, ring: 1 }, cores: 0, need: 3, coreDelay: 10, coreLife: 5 };
+  const coreRock = { ...flung, dead: false, fx: 360 + 215, fy: 680, vx: 0, vy: 0, flungT: 1, chain: 0 };
+  g.meteors = [coreRock];
+  const coreScore = g.score;
+  g.updateFlung(coreRock, 0.01, []);
+  assert.equal(g.boss.cores, 1);
+  assert.equal(g.boss.core, null);
+  assert.ok(g.score > coreScore);
+});
+
 test("daily new best is measured against the daily score, not the all-time best", () => {
   const g = newGame();
   g.start("daily");
@@ -879,4 +907,166 @@ test("the daily ad cap survives a reload", () => {
   assert.equal(g.adsUsed, 3);
   assert.equal(store[Save.key] !== undefined, true);
   delete global.localStorage;
+});
+
+test("slingshot picks the nearest live meteor in reach", () => {
+  const near = { angle: -Math.PI / 2, r: 60, dead: false };
+  const other = { angle: -Math.PI / 2, r: 80, dead: false };
+  const far = { angle: 0, r: 150, dead: false };
+  assert.equal(slingshotTarget([far, other, near], 360, 680), near);
+  assert.equal(slingshotTarget([{ angle: -Math.PI / 2, r: 150, dead: false }], 360, 680), null);
+  assert.equal(slingshotTarget([{ ...near, dead: true }], 360, 680), null);
+  assert.equal(slingshotTarget([{ ...near, flung: true }], 360, 680), null);
+});
+
+test("a flung rock leaves the player and curves with the orbit", () => {
+  const [vx, vy] = flingVelocity(0, 0, 100, 0, 1);
+  assert.ok(Math.abs(vx - 338) < 0.01);
+  assert.ok(Math.abs(vy - 286) < 0.01);
+});
+
+test("beat windows reward one reversal per musical pulse", () => {
+  assert.equal(isOnBeat(0.05, 0.7), true);
+  assert.equal(isOnBeat(0.7, 0.7), true);
+  assert.equal(isOnBeat(0.35, 0.7), false);
+  assert.equal(isOnBeat(0.6, 0.7, 0.05), false);
+  const g = newGame();
+  g.start();
+  g.meteors = [];
+  g.musicT = 0.02; g.musicBeat = 7;
+  const before = g.score;
+  g.action("reverse");
+  assert.ok(g.score > before);
+  assert.equal(g.beatHit, 7);
+  const after = g.score;
+  g.action("reverse");
+  assert.equal(g.score, after);
+});
+
+test("the sling hint only shows during the first tutorial run", () => {
+  assert.equal(slingHintVisible(true, 0, 7), true);
+  assert.equal(slingHintVisible(true, 0, 5), false);
+  assert.equal(slingHintVisible(true, 1, 20), false);
+  assert.equal(slingHintVisible(false, 0, 20), false);
+});
+
+test("a tap whips a nearby meteor into a friendly projectile", () => {
+  localStore();
+  const g = newGame();
+  g.start("classic");
+  g.meteors = [g.spawnMeteor(g.angle, 100, 20, "normal", g.ringVis)];
+  const before = g.score;
+  assert.equal(g.trySlingshot(), true);
+  assert.ok(g.score > before);
+  assert.equal(g.slings, 1);
+  const flung = g.meteors.filter(m => m.flung);
+  assert.equal(flung.length, 1);
+  const fx = flung[0].fx;
+  g.hitStop = 0;
+  g.update(0.016);
+  assert.notEqual(flung[0].fx, fx);
+  delete global.localStorage;
+});
+
+test("gravity wells pull meteors toward the well", () => {
+  const [x, y] = gravityStep(100, 100, 200, 100, 0.5);
+  assert.ok(x > 100 && x < 200);
+  assert.equal(y, 100);
+  const [sx, sy] = gravityStep(5, 5, 5, 5, 0.5);
+  assert.equal(sx, 5); assert.equal(sy, 5);
+  const [zx, zy] = gravityStep(0, 0, 100, 0, 0);
+  assert.equal(zx, 0); assert.equal(zy, 0);
+});
+
+test("a meteor inside a gravity well is pulled and then consumed", () => {
+  localStore();
+  const g = newGame();
+  g.start("classic");
+  g.meteors = [g.spawnMeteor(2, 0, 16, "normal", 300)];
+  g.gravity = { angle: 2, ring: 0, life: 5 };
+  g.spawnT = 999;
+  g.hitStop = 0;
+  const before = Math.abs(g.meteors[0].r - 130);
+  g.update(0.05);
+  if (g.meteors.length) assert.ok(Math.abs(g.meteors[0].r - 130) < before);
+  delete global.localStorage;
+});
+
+test("a meteor reaching the well center pays out and disappears", () => {
+  localStore();
+  const g = newGame();
+  g.start("classic");
+  g.meteors = [g.spawnMeteor(2, 0, 16, "normal", 130)];
+  g.gravity = { angle: 2, ring: 0, life: 5 };
+  g.spawnT = 999;
+  g.hitStop = 0;
+  const before = g.score;
+  g.update(0.016);
+  assert.equal(g.meteors.some(m => !m.flung && m.angle === 2), false);
+  assert.ok(g.score > before);
+  delete global.localStorage;
+});
+
+test("telegraphed patterns fire a symmetric fan of three rocks", () => {
+  const angles = patternAngles(1, 3, 0.5);
+  assert.equal(angles.length, 3);
+  assert.equal(angles[1], 1);
+  assert.ok(Math.abs(angles[0] + angles[2] - 2) < 1e-9);
+  localStore();
+  const g = newGame();
+  g.start("classic");
+  g.meteors = [];
+  g.patternWarn = { angle: 0, ring: 1, t: 0.01 };
+  g.spawnT = 999;
+  g.hitStop = 0;
+  g.update(0.02);
+  assert.equal(g.meteors.length, 3);
+  assert.equal(g.patternWarn, null);
+  delete global.localStorage;
+});
+
+test("run modifiers are deterministic and only touch classic runs", () => {
+  const a = pickModifier(mulberry32(9));
+  const b = pickModifier(mulberry32(9));
+  assert.equal(a.id, b.id);
+  assert.ok(RUN_MODIFIERS.includes(a));
+  localStore();
+  const g = newGame();
+  g.scoreMul = 1; g.crystalMul = 1; g.meteorMul = 1; g.flareCD = 12;
+  g.applyModifier(RUN_MODIFIERS[0]);
+  assert.equal(g.modifier.id, "rich");
+  assert.equal(g.crystalMul, 2);
+  assert.equal(g.scoreMul, 1);
+  assert.ok(g.meteorMul > 1);
+  g.start("ranked");
+  assert.equal(g.modifier, null);
+  delete global.localStorage;
+});
+
+test("classic runs pick a modifier once the tutorial is over", () => {
+  localStore();
+  const g = newGame();
+  g.save.tutorial.done = true;
+  g.start("classic");
+  assert.ok(g.modifier);
+  assert.ok(RUN_MODIFIERS.some(m => m.id === g.modifier.id));
+  delete global.localStorage;
+});
+
+test("every meteor type has a distinct colorblind glyph", () => {
+  const seen = new Set();
+  for (const type of METEOR_TYPES) {
+    const glyph = meteorGlyph(type.id);
+    assert.ok(glyph);
+    assert.equal(seen.has(glyph), false);
+    seen.add(glyph);
+  }
+  assert.equal(meteorGlyph("unknown"), "circle");
+});
+
+test("slingshot preview follows the fling velocity", () => {
+  const pts = slingPreview(100, 200, 300, -100, 4, 0.05);
+  assert.equal(pts.length, 4);
+  assert.deepEqual(pts[0], [115, 195]);
+  assert.deepEqual(pts[3], [160, 180]);
 });
