@@ -187,14 +187,53 @@ const seededPick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 // First-run pacing assistance is limited to the non-competitive tutorial.
 // Daily and ranked runs always retain the standard deterministic difficulty.
 function difficultyProfile(level, { tutorial = false, competitive = false } = {}) {
-  const safeLevel = clamp(Number.isFinite(level) ? Math.floor(level) : 1, 1, 14);
+  const safeLevel = clamp(Number.isFinite(level) ? Math.floor(level) : 1, 1, 40);
   const beginnerAssist = tutorial && !competitive;
   return {
     level: safeLevel,
     spawnIntervalMultiplier: beginnerAssist ? 1.22 : 1,
     meteorSpeedMultiplier: beginnerAssist ? 0.88 : 1,
-    doubleSpawnChance: beginnerAssist ? 0 : Math.min(0.5, safeLevel * 0.06),
+    doubleSpawnChance: beginnerAssist ? 0 : Math.min(0.75, safeLevel * 0.06),
+    lateSpeedMultiplier: 1 + Math.max(0, safeLevel - 14) * 0.02,
   };
+}
+
+// Ghost playback must follow the timestamps the recorder wrote. Samples are
+// taken at an interval, so their times drift from exact 0.12s steps.
+function ghostSampleAt(samples, t) {
+  if (!Array.isArray(samples) || !samples.length) return null;
+  if (t <= samples[0][0]) return samples[0];
+  const last = samples[samples.length - 1];
+  if (t >= last[0]) return t > last[0] + 1 ? null : last;
+  let lo = 0, hi = samples.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (samples[mid][0] <= t) lo = mid; else hi = mid;
+  }
+  const a = samples[lo], b = samples[hi];
+  const span = b[0] - a[0];
+  const k = span > 0 ? (t - a[0]) / span : 0;
+  let da = b[1] - a[1];
+  if (da > Math.PI) da -= TAU;
+  else if (da < -Math.PI) da += TAU;
+  return [t, a[1] + da * k, a[2] + (b[2] - a[2]) * k];
+}
+
+function swipeDir(dx, dy) {
+  if (Math.abs(dy) < 22 || Math.abs(dy) <= Math.abs(dx)) return null;
+  return dy < 0 ? "up" : "down";
+}
+
+function crystalPoints(combo, scoreMul, ring) {
+  return Math.round(25 * combo * scoreMul * (ring === 2 ? 1.6 : 1));
+}
+
+function missionTarget(template, best) {
+  const target = template && Number(template.target) || 0;
+  if (!template) return target;
+  if (template.metric === "run_score") return Math.max(target, Math.floor((best || 0) * 0.5));
+  if (template.metric === "run_level") return Math.max(target, Math.min(10, 4 + Math.floor((best || 0) / 5000)));
+  return target;
 }
 
 function flareWarningText(secondsRemaining, ringIndex) {
@@ -376,6 +415,8 @@ function sanitizeCampaign(raw) {
 
 const Save = {
   key: "orbit_runner_save",
+  backupKey: "orbit_runner_save_backup",
+  lastWriteFailed: false,
   fresh() {
     return {
       best: 0, bank: 0, gems: 10, muted: false, lifetime: 0,
@@ -384,6 +425,7 @@ const Save = {
       missions: [], missionDay: "", missionsDone: 0,
       daily: { date: "", best: 0 }, ranked: { week: "", best: 0 },
       profile: null, ghost: null,
+      ads: { day: "", count: 0 },
       tutorial: { done: false, step: 0 },
       cosmetics: {
         owned: ["trail_default", "skin_scout", "title_rookie"],
@@ -397,9 +439,14 @@ const Save = {
     };
   },
   load() {
-    let raw = null;
-    try { raw = JSON.parse(localStorage.getItem(this.key)); } catch (e) { /* unavailable/corrupt */ }
-    if (!raw || typeof raw !== "object" || Array.isArray(raw)) raw = {};
+    const read = key => {
+      try {
+        const v = JSON.parse(localStorage.getItem(key));
+        return v && typeof v === "object" && !Array.isArray(v) ? v : null;
+      } catch (e) { return null; }
+    };
+    let raw = read(this.key) || read(this.backupKey);
+    if (!raw) raw = {};
     const out = this.fresh();
     out.campaign = sanitizeCampaign(raw.campaign);
     const num = v => (typeof v === "number" && Number.isFinite(v) && v >= 0) ? Math.floor(v) : 0;
@@ -426,6 +473,10 @@ const Save = {
     if (raw.ranked && typeof raw.ranked === "object") {
       out.ranked.week = typeof raw.ranked.week === "string" ? raw.ranked.week : "";
       out.ranked.best = num(raw.ranked.best);
+    }
+    if (raw.ads && typeof raw.ads === "object") {
+      out.ads.day = typeof raw.ads.day === "string" ? raw.ads.day : "";
+      out.ads.count = Math.min(MAX_ADS, num(raw.ads.count));
     }
     if (raw.profile && typeof raw.profile === "object" && raw.profile.provider === "facebook" &&
         typeof raw.profile.id === "string" && typeof raw.profile.name === "string") {
@@ -486,7 +537,20 @@ const Save = {
     }
     return out;
   },
-  write(d) { try { localStorage.setItem(this.key, JSON.stringify(d)); } catch (e) {} },
+  write(d) {
+    try {
+      const previous = localStorage.getItem(this.key);
+      if (previous) {
+        try { JSON.parse(previous); localStorage.setItem(this.backupKey, previous); } catch (e) { /* keep the last good backup */ }
+      }
+      localStorage.setItem(this.key, JSON.stringify(d));
+      this.lastWriteFailed = false;
+      return true;
+    } catch (e) {
+      this.lastWriteFailed = true;
+      return false;
+    }
+  },
 };
 
 // --------------------------------------------------------- social / boards --
@@ -1123,7 +1187,9 @@ class Game {
     this.gemStoreReturn = "title"; this.storeMessage = ""; this.storeBusy = false;
     this.mode = "classic"; this.contract = CONTRACTS[0]; this.ship = SHIPS[0];
     this.biome = BIOMES[0];
-    this.rng = Math.random; this.ghost = this.save.ghost; this.rivalGhost = null; this.adsUsed = 0;
+    this.rng = Math.random; this.ghost = this.save.ghost; this.rivalGhost = null;
+    this.adsUsed = this.save.ads.day === dateKey() ? this.save.ads.count : 0;
+    this.pendingGhost = null;
     this.newDailyBest = false; this.dailyBestAtStart = 0;
     this.profile = this.save.profile;
     this.ranked = false; this.competitive = false; this.rankedWeek = ""; this.dailyDate = dateKey();
@@ -1158,11 +1224,13 @@ class Game {
       bossesCleared: 0, boss: null, hitStop: 0, flash: 0, musicT: 0.7, musicBeat: 0, trailT: 0,
       shocks: [], shooting: [], shootingT: 2.5, shipTrail: [],
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
+      reverseGrace: 0,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
       newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
   }
   goTitle() {
+    this.commitGhost();
     this.currentCampaignSector = null;
     this.reset();
     this.ghost = this.save.ghost;
@@ -1170,7 +1238,14 @@ class Game {
     this.state = "title";
     this.paused = false;
   }
+  commitGhost() {
+    if (!this.pendingGhost) return;
+    if (!this.save.ghost || this.pendingGhost.score > this.save.ghost.score) this.save.ghost = this.pendingGhost;
+    this.pendingGhost = null;
+    Save.write(this.save);
+  }
   start(mode = "classic") {
+    this.commitGhost();
     this.currentCampaignSector = null;
     this.ensureMissions();
     this.rotateCompletedMissions();
@@ -1247,7 +1322,7 @@ class Game {
     Sfx.sfxEnabled = st.sfx !== false;
   }
   get level() { return 1 + Math.floor(this.elapsed / 15); }
-  get effLevel() { return Math.min(this.level, 14); }
+  get effLevel() { return Math.min(this.level, 40); }
   get levelName() { return LEVEL_NAMES[(this.level - 1) % LEVEL_NAMES.length]; }
   get nextShip() { return SHIPS.find(s => !this.save.ships.includes(s.id)); }
   playerPos() { return [CX + Math.cos(this.angle) * this.ringVis, CY + Math.sin(this.angle) * this.ringVis]; }
@@ -1265,7 +1340,7 @@ class Game {
       const j = Math.floor(rng() * (i + 1));
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
-    this.save.missions = pool.slice(0, 3).map(t => ({ ...t, progress: 0, completed: false }));
+    this.save.missions = pool.slice(0, 3).map(t => ({ ...t, target: missionTarget(t, this.save.best), progress: 0, completed: false }));
     this.save.missionDay = today;
     Save.write(this.save);
   }
@@ -1279,7 +1354,7 @@ class Game {
       if (!choices.length) choices = MISSION_POOL.filter(t => !active.has(t.id));
       if (!choices.length) return { ...m, progress: 0, completed: false };
       const t = pick(choices); active.add(t.id); changed = true;
-      return { ...t, progress: 0, completed: false };
+      return { ...t, target: missionTarget(t, this.save.best), progress: 0, completed: false };
     });
     if (changed) Save.write(this.save);
   }
@@ -1458,25 +1533,29 @@ class Game {
     const score = Math.floor(this.score);
     if (!this.runCounted) { this.save.stats.runs++; this.runCounted = true; }
     const today = dateKey();
+    let previousBest = this.save.best;
     if (this.mode === "daily") {
       const day = this.dailyDate || today;
-      const prev = this.save.daily.date === day ? this.save.daily.best : 0;
-      this.newDailyBest = score > prev;
-      if (day === today) this.save.daily = { date: day, best: Math.max(prev, score) };
+      previousBest = this.save.daily.date === day ? this.save.daily.best : 0;
+      this.newDailyBest = score > previousBest;
+      if (day === today) this.save.daily = { date: day, best: Math.max(previousBest, score) };
     } else {
       this.newDailyBest = false;
-      if (this.mode === "classic" && score > this.save.best) {
-        this.save.ghost = { score, samples: this.ghostSamples.slice(0, 2000) };
+      if (this.mode === "ranked") {
+        previousBest = this.save.ranked.week === this.rankedWeek ? this.save.ranked.best : 0;
+      }
+      if (this.mode === "classic" && this.ghostSamples.length) {
+        this.pendingGhost = { score, samples: this.ghostSamples.slice(0, 2000) };
       }
     }
-    this.newBest = score > this.save.best;
+    this.newBest = this.mode === "daily" ? this.newDailyBest : score > previousBest;
     this.save.best = Math.max(this.save.best, score);
     this.message = "";
     this.checkMissions();
     this.refreshUnlocks();
     this.save.bank = Math.max(0, this.save.bank);
     const completedCampaignSector = this.completeCampaignSector();
-    Save.write(this.save);
+    if (!Save.write(this.save)) this.message = "Progress not saved - device storage is full.";
     this.state = completedCampaignSector && this.campaignFinished() ? "ending" : "over";
     this.paused = false; this.hitStop = 0;
     if (this.ranked) {
@@ -1804,8 +1883,9 @@ class Game {
     }
     if (kind === "double" && (this.doubleUsed || this.crystals <= 0)) return;
     if (!this.ads.isReady()) { this.message = "No ad available right now."; return; }
-    if (this.adsUsed >= MAX_ADS) { this.message = "No ads left this session."; return; }
+    if (this.adsUsed >= MAX_ADS) { this.message = "No ads left today."; return; }
     this.adsUsed++;
+    this.save.ads = { day: dateKey(), count: this.adsUsed };
     this.save.analytics.ads++;
     Save.write(this.save);
     if (kind === "double") this.ads.showRewarded(() => this.rewardDouble(), () => this.adClosed());
@@ -1889,8 +1969,9 @@ class Game {
   watchGemAd() {
     if (this.storeBusy || this.ads.showing) return;
     if (!this.ads.isReady()) { this.storeMessage = "No ad available right now."; return; }
-    if (this.adsUsed >= MAX_ADS) { this.storeMessage = "No ads left this session."; return; }
+    if (this.adsUsed >= MAX_ADS) { this.storeMessage = "No ads left today."; return; }
     this.adsUsed++;
+    this.save.ads = { day: dateKey(), count: this.adsUsed };
     this.save.analytics.ads++;
     this.save.analytics.gemAds++;
     Save.write(this.save);
@@ -2041,7 +2122,7 @@ class Game {
     if (this.state !== "play") return;
     if (a === "up" && this.ring < 2) this.ring++;
     else if (a === "down" && this.ring > 0) this.ring--;
-    else if (a === "reverse" || a === "tap") this.dir *= -1;
+    else if (a === "reverse" || a === "tap") { this.dir *= -1; this.reverseGrace = 0.5; }
     else return;
     Sfx.play("jump");
   }
@@ -2138,7 +2219,6 @@ class Game {
       return;
     }
     if (this.state === "title") {
-      if (kk === "b") { this.toggleShield(); return; }
       if (kk === "v") { this.cycleShip(); return; }
       if (kk === "1" || kk === "2" || kk === "3") { this.selectContract(CONTRACTS[Number(kk) - 1].id); return; }
       if (kk === "d") { this.beginMode("daily"); return; }
@@ -2332,6 +2412,7 @@ class Game {
       if (this.level % 5 === 0) this.startBoss();
     }
     this.invuln = Math.max(0, this.invuln - dt);
+    this.reverseGrace = Math.max(0, this.reverseGrace - dt);
     this.score += dt * 10 * this.level * this.scoreMul;
     this.comboT = Math.max(0, this.comboT - dt);
     this.magnetT = Math.max(0, this.magnetT - dt);
@@ -2353,7 +2434,8 @@ class Game {
     }
     const [px, py] = this.playerPos();
 
-    if (this.runTime - this.lastGhostSample >= 0.12 && this.ghostSamples.length < 2000) {
+    const ghostStep = this.runTime < 60 ? 0.12 : 0.3;
+    if (this.runTime - this.lastGhostSample >= ghostStep && this.ghostSamples.length < 2000) {
       this.ghostSamples.push([this.runTime, this.angle, this.ringVis]);
       this.lastGhostSample = this.runTime;
     }
@@ -2404,15 +2486,16 @@ class Game {
         const type = this.pickMeteorType();
         this.meteors.push(this.spawnMeteor(
           this.rnd(0, TAU),
-          (130 + 16 * lvl) * this.rnd(.8, 1.25) * this.meteorMul * pacing.meteorSpeedMultiplier * (this.boss ? 1.1 : 1),
+          (130 + 16 * lvl) * this.rnd(.8, 1.25) * this.meteorMul * pacing.meteorSpeedMultiplier * pacing.lateSpeedMultiplier * (this.boss ? 1.1 : 1),
           this.rnd(14, 24), type.id,
         ));
       }
-      this.spawnT = Math.max(0.24, (1 - 0.07 * lvl) * bossMul * pacing.spawnIntervalMultiplier) * this.rnd(.7, 1.2);
+      const spawnFloor = Math.max(0.14, 0.24 - Math.max(0, lvl - 14) * 0.006);
+      this.spawnT = Math.max(spawnFloor, (1 - 0.07 * lvl) * bossMul * pacing.spawnIntervalMultiplier) * this.rnd(.7, 1.2);
     }
-    // spawn crystals (biased toward the player's ring)
+    // spawn crystals, favouring the risky outer ring
     if ((this.gemT -= dt) <= 0 && this.gems.length < 4) {
-      const ring = this.chance(0.55) ? this.ring : this.rndInt(3);
+      const ring = this.chance(0.5) ? 2 : this.rndInt(3);
       this.gems.push({ ring, angle: this.rnd(0, TAU), life: 6 });
       this.gemT = this.rnd(1.1, 2.1) / (this.gemRate || 1);
     }
@@ -2460,11 +2543,13 @@ class Game {
       }
       if (!m.near && d < hitR + 28 && this.invuln <= 0) {
         m.near = true; this.nearMisses++; this.save.stats.near++;
-        const pts = Math.round(15 * this.combo * this.scoreMul * (m.nearMult || 1)); this.score += pts;
+        const reversed = this.reverseGrace > 0;
+        if (reversed) this.reverseGrace = 0;
+        const pts = Math.round((reversed ? 25 : 15) * this.combo * this.scoreMul * (m.nearMult || 1)); this.score += pts;
         Sfx.play("near"); this.hitStop = Math.max(this.hitStop, 0.02);
         this.bumpCombo();
-        this.float(px, py - 30, `CLOSE! +${pts}`, "#ffe678");
-        this.addShock(px, py, "#ffe678", 70, 0.3);
+        this.float(px, py - 30, `${reversed ? "REVERSE" : "CLOSE!"} +${pts}`, reversed ? "#a8ff8c" : "#ffe678");
+        this.addShock(px, py, reversed ? "#a8ff8c" : "#ffe678", 70, 0.3);
       }
       m.trailT = (m.trailT || 0) - dt;
       if (m.trailT <= 0 && m.r < 470) {
@@ -2495,7 +2580,7 @@ class Game {
         const gain = this.crystalMul;
         this.crystals += gain; this.crystalGain += gain;
         this.save.lifetime += gain; this.gemsCollected++;
-        const pts = Math.round(25 * this.combo * this.scoreMul); this.score += pts;
+        const pts = crystalPoints(this.combo, this.scoreMul, g.ring); this.score += pts;
         this.float(gx, gy, `+${pts}`, "#78e6ff");
         this.bumpCombo();
         Sfx.play(this.combo >= 5 ? "gem3" : this.combo >= 3 ? "gem2" : "gem");
@@ -2564,7 +2649,7 @@ class Game {
       () => this.watchGemAd(), 64, "rgba(20,60,90,0.35)");
     this.button(c, this.gemStoreReturn === "over" ? "BACK TO RUN" : "BACK", 912,
       "#c8c8dc", () => this.closeGemStore(), 64);
-    text(c, `Ads left this session: ${Math.max(0, MAX_ADS - this.adsUsed)}`, W / 2, 1004, 15, "#828296");
+    text(c, `Ads left today: ${Math.max(0, MAX_ADS - this.adsUsed)}`, W / 2, 1004, 15, "#828296");
     if (this.storeMessage) text(c, this.storeMessage, W / 2, 1046, 18, "#ffe678");
     text(c, "1-4 buy packs - A watch ad - B / ESC back", W / 2, 1104, 16, "#828296");
     if (this.iap.demo) text(c, "Native iOS/Android builds can use real store billing.", W / 2, 1140, 14, "#55557a");
@@ -2793,18 +2878,16 @@ class Game {
 
     // ghost of the best classic run
     if (this.ghost && this.ghost.samples.length) {
-      const idx = Math.floor(this.runTime / 0.12);
-      if (idx < this.ghost.samples.length) {
-        const s = this.ghost.samples[idx];
+      const s = ghostSampleAt(this.ghost.samples, this.runTime);
+      if (s) {
         const gx = CX + Math.cos(s[1]) * s[2] + ox, gy = CY + Math.sin(s[1]) * s[2] + oy;
         c.globalAlpha = 0.28; c.fillStyle = "#78c8ff"; c.beginPath();
         c.arc(gx, gy, 14, 0, TAU); c.fill(); c.globalAlpha = 1;
       }
     }
     if (this.rivalGhost && this.rivalGhost.samples && this.rivalGhost.samples.length) {
-      const idx = Math.floor(this.runTime / 0.12);
-      if (idx < this.rivalGhost.samples.length) {
-        const s = this.rivalGhost.samples[idx];
+      const s = ghostSampleAt(this.rivalGhost.samples, this.runTime);
+      if (s) {
         const gx = CX + Math.cos(s[1]) * s[2] + ox, gy = CY + Math.sin(s[1]) * s[2] + oy;
         c.globalAlpha = 0.32;
         drawAircraft(c, gx, gy, s[1] + Math.PI / 2,
@@ -3666,9 +3749,9 @@ function boot() {
   canvas.addEventListener("pointerup", e => {
     if (!start) return;
     const [x, y] = toLogical(e), dy = y - start.p[1], dx = x - start.p[0];
-    if (Math.abs(dy) > 40 && Math.abs(dy) > Math.abs(dx) && game.state === "play" && !game.ads.showing && !game.paused)
-      game.action(dy < 0 ? "up" : "down");
-    else game.tap(...start.p);
+    const dir = swipeDir(dx, dy);
+    if (dir && game.state === "play" && !game.ads.showing && !game.paused) game.action(dir);
+    else if (game.state !== "play" || Math.hypot(dx, dy) <= 8) game.tap(...start.p);
     start = null;
   });
   window.addEventListener("keydown", e => { Sfx.unlock(); game.key(e.key); if (e.key === " ") e.preventDefault(); });
@@ -3676,7 +3759,6 @@ function boot() {
   window.addEventListener("appinstalled", () => { game.installPrompt = null; });
 
   const autoPause = () => { if (game.state === "play" && !game.ads.showing) game.paused = true; };
-  document.addEventListener("visibilitychange", () => { if (document.hidden) autoPause(); });
   window.addEventListener("blur", autoPause);
 
   let last = performance.now();
@@ -3733,5 +3815,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);

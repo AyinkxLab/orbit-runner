@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -138,8 +138,12 @@ test("first-run pacing eases tutorial meteor pressure without changing competiti
   assert.equal(ranked.meteorSpeedMultiplier, 1);
   assert.equal(ranked.doubleSpawnChance, 0.12);
 
-  assert.equal(difficultyProfile(99).level, 14);
+  assert.equal(difficultyProfile(99).level, 40);
   assert.equal(difficultyProfile(-4).level, 1);
+  const late = difficultyProfile(30);
+  assert.equal(late.level, 30);
+  assert.ok(late.lateSpeedMultiplier > 1);
+  assert.ok(late.doubleSpawnChance > difficultyProfile(10).doubleSpawnChance);
 });
 
 test("flare warnings name the target ring and countdown without relying on color", () => {
@@ -333,6 +337,8 @@ test("a new best run stores a ghost", () => {
   g.ghostSamples = [[0, 0, 130], [0.12, 1, 215]];
   g.score = 100;
   g.die();
+  assert.equal(g.save.ghost, null);
+  g.commitGhost();
   assert.equal(g.save.ghost.score, 100);
   assert.equal(g.save.ghost.samples.length, 2);
 });
@@ -789,4 +795,88 @@ test("Corona Surge HUD guidance states core progress and remaining time", () => 
   assert.equal(bossWarningText(2.1, 0, 3), "HURRY — 3 CORES LEFT — 2.1s");
   assert.equal(bossWarningText(0, 1, 3), "");
   assert.equal(bossWarningText(Number.NaN, 1, 3), "");
+});
+
+test("ghost playback follows recorded timestamps and wraps angles", () => {
+  const samples = [[0, 0, 130], [0.2, Math.PI - 0.1, 215], [0.5, 0, 300]];
+  const mid = ghostSampleAt(samples, 0.1);
+  assert.equal(mid[0], 0.1);
+  assert.ok(mid[1] > 0 && mid[1] < Math.PI);
+  assert.equal(mid[2], 172.5);
+  const wrapped = ghostSampleAt([[0, Math.PI - 0.1, 130], [0.2, -Math.PI + 0.1, 130]], 0.1);
+  assert.ok(Math.abs(Math.abs(wrapped[1]) - Math.PI) < 0.01);
+  assert.equal(ghostSampleAt(samples, 0.5), samples[2]);
+  assert.equal(ghostSampleAt(samples, 99), null);
+  assert.equal(ghostSampleAt([], 1), null);
+});
+
+test("short swipes change rings and drags are not mistaken for taps", () => {
+  assert.equal(swipeDir(0, -22), "up");
+  assert.equal(swipeDir(0, 30), "down");
+  assert.equal(swipeDir(0, -20), null);
+  assert.equal(swipeDir(40, -40), null);
+  assert.equal(swipeDir(0, 5), null);
+});
+
+test("crystals on the outer ring are worth more", () => {
+  assert.equal(crystalPoints(1, 1, 1), 25);
+  assert.equal(crystalPoints(1, 1, 2), 40);
+  assert.equal(crystalPoints(4, 2, 2), 320);
+});
+
+test("missions scale with the player's best score", () => {
+  const score = MISSION_POOL.find(m => m.metric === "run_score");
+  const level = MISSION_POOL.find(m => m.metric === "run_level");
+  assert.equal(missionTarget(score, 0), 1500);
+  assert.equal(missionTarget(score, 20000), 10000);
+  assert.equal(missionTarget(level, 0), 4);
+  assert.equal(missionTarget(level, 50000), 10);
+  assert.equal(missionTarget(MISSION_POOL[0], 50000), 15);
+});
+
+test("reverse orbit earns a close-pass bonus once", () => {
+  const g = newGame();
+  g.start();
+  g.spawnT = 99; g.gemT = 99; g.powerupT = 99; g.flareCD = 99;
+  g.invuln = 0;
+  g.meteors = [{ angle: g.angle, r: g.ringVis - 24, speed: 0, size: 10, kind: "normal", spin: 0 }];
+  const before = g.score;
+  g.action("reverse");
+  g.update(0.01);
+  assert.ok(g.score - before >= 25);
+  assert.ok(g.floats.some(f => f.s.startsWith("REVERSE")));
+  assert.equal(g.reverseGrace, 0);
+  assert.equal(g.meteors.length, 1);
+  assert.equal(g.meteors[0].near, true);
+});
+
+test("daily new best is measured against the daily score, not the all-time best", () => {
+  const g = newGame();
+  g.start("daily");
+  g.competitive = false;
+  g.save.best = 999999;
+  g.score = 100;
+  g.die();
+  assert.equal(g.newBest, true);
+  assert.equal(g.newBest, g.newDailyBest);
+});
+
+test("a corrupt save falls back to the previous good copy", () => {
+  const store = localStore();
+  const first = Save.fresh(); first.best = 111; Save.write(first);
+  const second = Save.fresh(); second.best = 222; Save.write(second);
+  store[Save.key] = "{broken";
+  assert.equal(Save.load().best, 111);
+  delete global.localStorage;
+});
+
+test("the daily ad cap survives a reload", () => {
+  const store = localStore();
+  const saved = Save.fresh();
+  saved.ads = { day: dateKey(), count: 3 };
+  Save.write(saved);
+  const g = new Game(new MockAdProvider());
+  assert.equal(g.adsUsed, 3);
+  assert.equal(store[Save.key] !== undefined, true);
+  delete global.localStorage;
 });
