@@ -318,6 +318,11 @@ function dailyModifier(day) {
   return pickModifier(mulberry32(hashStr("orbit-daily-mod-" + day)));
 }
 
+function bossPhase(remaining, cores, need) {
+  const enraged = (cores || 0) >= Math.ceil((need || 0) / 2) || (remaining || 0) <= 5;
+  return { enraged, spin: enraged ? 1.6 : 1, delay: enraged ? 0.7 : 1 };
+}
+
 function flareWarningText(secondsRemaining, ringIndex) {
   const ring = RING_NAMES[ringIndex];
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
@@ -2468,6 +2473,7 @@ class Game {
     if (!this.boss) return;
     this.boss.timer -= dt;
     this.boss.coreT -= dt;
+    const phase = bossPhase(this.boss.timer, this.boss.cores, this.boss.need);
     if (!this.boss.core && this.boss.coreT <= 0 && this.boss.timer > 3) {
       let ring;
       if (this.boss.ringMode === "outer") ring = 1 + this.rndInt(2);
@@ -2476,11 +2482,11 @@ class Game {
       else ring = this.rndInt(3);
       this.boss.coreSpawns++;
       this.boss.core = { ring, angle: this.rnd(0, TAU), life: this.boss.coreLife, color: this.boss.coreColor };
-      this.boss.coreT = this.boss.coreDelay;
+      this.boss.coreT = this.boss.coreDelay * phase.delay;
     }
     if (this.boss.core) {
       this.boss.core.life -= dt;
-      this.boss.core.angle += this.boss.spin * dt;
+      this.boss.core.angle += this.boss.spin * phase.spin * dt;
       if (this.boss.core.life <= 0) {
         this.boss.core = null; this.boss.coreT = this.boss.coreDelay;
       }
@@ -4118,5 +4124,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, METEOR_GLYPHS, RUN_MODIFIERS, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, dailyModifier, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, dailyModifier, bossPhase, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);

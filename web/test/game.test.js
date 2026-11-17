@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, meteorGlyph, METEOR_TYPES, mulberry32, dailyModifier, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, meteorGlyph, METEOR_TYPES, mulberry32, dailyModifier, bossPhase, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -1101,4 +1101,13 @@ test("the daily mutator is stable for a date and varies across dates", () => {
   const ids = new Set();
   for (let i = 1; i <= 14; i++) ids.add(dailyModifier(`2026-12-${String(i).padStart(2, "0")}`).id);
   assert.ok(ids.size > 1);
+});
+
+test("bosses enrage after half their cores or in the last five seconds", () => {
+  assert.equal(bossPhase(12, 0, 4).enraged, false);
+  assert.equal(bossPhase(12, 2, 4).enraged, true);
+  assert.equal(bossPhase(4, 0, 4).enraged, true);
+  const calm = bossPhase(12, 0, 4), hot = bossPhase(4, 0, 4);
+  assert.ok(hot.spin > calm.spin);
+  assert.ok(hot.delay < calm.delay);
 });
