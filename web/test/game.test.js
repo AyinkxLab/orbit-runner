@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -878,5 +878,39 @@ test("the daily ad cap survives a reload", () => {
   const g = new Game(new MockAdProvider());
   assert.equal(g.adsUsed, 3);
   assert.equal(store[Save.key] !== undefined, true);
+  delete global.localStorage;
+});
+
+test("slingshot picks the nearest live meteor in reach", () => {
+  const near = { angle: -Math.PI / 2, r: 60, dead: false };
+  const other = { angle: -Math.PI / 2, r: 80, dead: false };
+  const far = { angle: 0, r: 150, dead: false };
+  assert.equal(slingshotTarget([far, other, near], 360, 680), near);
+  assert.equal(slingshotTarget([{ angle: -Math.PI / 2, r: 150, dead: false }], 360, 680), null);
+  assert.equal(slingshotTarget([{ ...near, dead: true }], 360, 680), null);
+  assert.equal(slingshotTarget([{ ...near, flung: true }], 360, 680), null);
+});
+
+test("a flung rock leaves the player and curves with the orbit", () => {
+  const [vx, vy] = flingVelocity(0, 0, 100, 0, 1);
+  assert.ok(Math.abs(vx - 338) < 0.01);
+  assert.ok(Math.abs(vy - 286) < 0.01);
+});
+
+test("a tap whips a nearby meteor into a friendly projectile", () => {
+  localStore();
+  const g = newGame();
+  g.start("classic");
+  g.meteors = [g.spawnMeteor(g.angle, 100, 20, "normal", g.ringVis)];
+  const before = g.score;
+  assert.equal(g.trySlingshot(), true);
+  assert.ok(g.score > before);
+  assert.equal(g.slings, 1);
+  const flung = g.meteors.filter(m => m.flung);
+  assert.equal(flung.length, 1);
+  const fx = flung[0].fx;
+  g.hitStop = 0;
+  g.update(0.016);
+  assert.notEqual(flung[0].fx, fx);
   delete global.localStorage;
 });

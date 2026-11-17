@@ -24,6 +24,9 @@ const MAGNET_TIME = 8;
 const SLOW_TIME = 6;
 const MAX_COMBO = 8;
 const MAX_ADS = 4;
+const SLING_RADIUS = 95;
+const SLING_SPEED = 520;
+const SLING_LIFE = 1.2;
 const POWERUP_TIME = 10;
 const TAU = Math.PI * 2;
 const LEVEL_NAMES = ["DUST", "EMBER", "FLARE", "CORONA", "NOVA", "PULSAR", "QUASAR", "VOID"];
@@ -234,6 +237,28 @@ function missionTarget(template, best) {
   if (template.metric === "run_score") return Math.max(target, Math.floor((best || 0) * 0.5));
   if (template.metric === "run_level") return Math.max(target, Math.min(10, 4 + Math.floor((best || 0) / 5000)));
   return target;
+}
+
+function slingshotTarget(meteors, px, py, radius = SLING_RADIUS) {
+  let best = null, bestD = radius;
+  for (const m of meteors || []) {
+    if (!m || m.dead || m.flung) continue;
+    const x = CX + Math.cos(m.angle) * m.r, y = CY + Math.sin(m.angle) * m.r;
+    const d = Math.hypot(x - px, y - py);
+    if (d <= bestD) { bestD = d; best = m; }
+  }
+  return best;
+}
+
+function flingVelocity(px, py, tx, ty, angularVel) {
+  const dx = tx - px, dy = ty - py, d = Math.hypot(dx, dy);
+  let nx, ny;
+  if (d < 1) {
+    const ox = px - CX, oy = py - CY, od = Math.hypot(ox, oy) || 1;
+    nx = ox / od; ny = oy / od;
+  } else { nx = dx / d; ny = dy / d; }
+  const sign = Math.sign(angularVel) || 1;
+  return [(nx * 0.65 - ny * 0.55 * sign) * SLING_SPEED, (ny * 0.65 + nx * 0.55 * sign) * SLING_SPEED];
 }
 
 function flareWarningText(secondsRemaining, ringIndex) {
@@ -1224,7 +1249,7 @@ class Game {
       bossesCleared: 0, boss: null, hitStop: 0, flash: 0, musicT: 0.7, musicBeat: 0, trailT: 0,
       shocks: [], shooting: [], shootingT: 2.5, shipTrail: [],
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
-      reverseGrace: 0,
+      reverseGrace: 0, slings: 0, lastSlingT: -99,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
       newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
@@ -2115,6 +2140,23 @@ class Game {
     return newlyCompleted;
   }
 
+  trySlingshot() {
+    const [px, py] = this.playerPos();
+    const target = slingshotTarget(this.meteors, px, py);
+    if (!target) return false;
+    const tx = CX + Math.cos(target.angle) * target.r, ty = CY + Math.sin(target.angle) * target.r;
+    const [vx, vy] = flingVelocity(px, py, tx, ty, this.angularVel);
+    target.dead = true;
+    this.meteors.push({ ...target, dead: false, flung: true, fx: tx, fy: ty, vx, vy, flungT: SLING_LIFE, chain: 0 });
+    const pts = Math.round(40 * this.combo * this.scoreMul);
+    this.score += pts; this.bumpCombo();
+    this.slings++; this.lastSlingT = this.runTime;
+    this.float(px, py - 40, `SLING +${pts}`, "#a8ff8c");
+    this.addShock(px, py, "#a8ff8c", 90, 0.35);
+    Sfx.play("power");
+    return true;
+  }
+
   // ---- input ------------------------------------------------------------
   action(a) {
     if (this.paused) return;
@@ -2122,7 +2164,7 @@ class Game {
     if (this.state !== "play") return;
     if (a === "up" && this.ring < 2) this.ring++;
     else if (a === "down" && this.ring > 0) this.ring--;
-    else if (a === "reverse" || a === "tap") { this.dir *= -1; this.reverseGrace = 0.5; }
+    else if (a === "reverse" || a === "tap") { this.dir *= -1; this.reverseGrace = 0.5; if (a === "tap") this.trySlingshot(); }
     else return;
     Sfx.play("jump");
   }
@@ -2511,6 +2553,11 @@ class Game {
     const alive = [];
     for (const m of this.meteors) {
       if (m.dead) continue;
+      if (m.flung) {
+        m.fx += m.vx * dt; m.fy += m.vy * dt; m.flungT -= dt;
+        if (m.flungT <= 0 || m.fx < -60 || m.fx > W + 60 || m.fy < -60 || m.fy > H + 60) { m.dead = true; continue; }
+        alive.push(m); continue;
+      }
       if (m.kind === "splitter" && !m.split && m.r < 230) {
         m.split = true;
         for (const off of [-0.16, 0.16]) {
@@ -2929,15 +2976,17 @@ class Game {
 
     for (const m of this.meteors) {
       if (m.dead) continue;
-      const mx = CX + Math.cos(m.angle) * m.r + ox, my = CY + Math.sin(m.angle) * m.r + oy;
+      const mx = (m.flung ? m.fx : CX + Math.cos(m.angle) * m.r) + ox;
+      const my = (m.flung ? m.fy : CY + Math.sin(m.angle) * m.r) + oy;
       const slow = this.slowT > 0;
       const mt = this.meteorType(m.kind);
       // re-entry tail
       const tailR = m.r + m.speed * 0.10;
-      const tx = CX + Math.cos(m.angle) * tailR + ox, ty = CY + Math.sin(m.angle) * tailR + oy;
-      c.globalAlpha = 0.22; c.strokeStyle = slow ? "#8a7ab0" : mt.color; c.lineWidth = m.size * 0.9;
+      const tx = m.flung ? mx - m.vx * 0.09 : CX + Math.cos(m.angle) * tailR + ox;
+      const ty = m.flung ? my - m.vy * 0.09 : CY + Math.sin(m.angle) * tailR + oy;
+      c.globalAlpha = 0.22; c.strokeStyle = m.flung ? "#a8ff8c" : slow ? "#8a7ab0" : mt.color; c.lineWidth = m.size * 0.9;
       c.beginPath(); c.moveTo(tx, ty); c.lineTo(mx, my); c.stroke(); c.globalAlpha = 1;
-      const glowCol = m.kind === "gold" ? "rgba(255,212,90,0.14)"
+      const glowCol = m.flung ? "rgba(168,255,140,0.18)" : m.kind === "gold" ? "rgba(255,212,90,0.14)"
         : m.kind === "volatile" ? "rgba(255,90,40,0.14)"
         : m.kind === "ice" ? "rgba(100,220,255,0.12)"
         : slow ? "rgba(120,90,180,0.08)" : "rgba(255,110,50,0.09)";
@@ -2953,13 +3002,13 @@ class Game {
         else c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
       }
       c.closePath();
-      c.fillStyle = slow ? "#6a5a88" : mt.color; c.fill();
-      c.lineWidth = 2; c.strokeStyle = slow ? "#9a8ac0" : mt.shade; c.stroke();
+      c.fillStyle = m.flung ? "#8cf0a0" : slow ? "#6a5a88" : mt.color; c.fill();
+      c.lineWidth = 2; c.strokeStyle = m.flung ? "#d8ffd0" : slow ? "#9a8ac0" : mt.shade; c.stroke();
       c.fillStyle = slow ? "#4a3e62" : mt.shade;
       circle(c, -m.size * 0.25, -m.size * 0.2, m.size * 0.22);
       circle(c, m.size * 0.3, m.size * 0.25, m.size * 0.15);
       c.restore();
-      if (m.r > 380) circle(c, CX + Math.cos(m.angle) * 370, CY + Math.sin(m.angle) * 370, 4, "#ff5050");
+      if (m.r > 380 && !m.flung) circle(c, CX + Math.cos(m.angle) * 370, CY + Math.sin(m.angle) * 370, 4, "#ff5050");
     }
 
     if (this.state === "play") {
@@ -3815,5 +3864,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
