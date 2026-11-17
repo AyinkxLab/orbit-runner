@@ -1078,3 +1078,18 @@ test("holding a ring builds flow tiers", () => {
   assert.equal(flowTier(12).mult, 1.15);
   assert.equal(flowTier(99).tier, 3);
 });
+
+test("a pulse powerup clears nearby meteors and leaves distant ones", () => {
+  localStore();
+  const g = newGame();
+  g.start("classic");
+  const near = g.spawnMeteor(g.angle, 100, 20, "normal", g.ringVis);
+  const far = g.spawnMeteor(g.angle + Math.PI, 100, 20, "normal", g.ringVis);
+  g.meteors = [near, far];
+  const before = g.score;
+  assert.equal(g.firePulse(), 1);
+  assert.equal(near.dead, true);
+  assert.equal(far.dead, false);
+  assert.ok(g.score > before);
+  delete global.localStorage;
+});
