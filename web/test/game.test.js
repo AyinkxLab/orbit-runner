@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -965,5 +965,44 @@ test("a tap whips a nearby meteor into a friendly projectile", () => {
   g.hitStop = 0;
   g.update(0.016);
   assert.notEqual(flung[0].fx, fx);
+  delete global.localStorage;
+});
+
+test("gravity wells pull meteors toward the well", () => {
+  const [x, y] = gravityStep(100, 100, 200, 100, 0.5);
+  assert.ok(x > 100 && x < 200);
+  assert.equal(y, 100);
+  const [sx, sy] = gravityStep(5, 5, 5, 5, 0.5);
+  assert.equal(sx, 5); assert.equal(sy, 5);
+  const [zx, zy] = gravityStep(0, 0, 100, 0, 0);
+  assert.equal(zx, 0); assert.equal(zy, 0);
+});
+
+test("a meteor inside a gravity well is pulled and then consumed", () => {
+  localStore();
+  const g = newGame();
+  g.start("classic");
+  g.meteors = [g.spawnMeteor(2, 0, 16, "normal", 300)];
+  g.gravity = { angle: 2, ring: 0, life: 5 };
+  g.spawnT = 999;
+  g.hitStop = 0;
+  const before = Math.abs(g.meteors[0].r - 130);
+  g.update(0.05);
+  if (g.meteors.length) assert.ok(Math.abs(g.meteors[0].r - 130) < before);
+  delete global.localStorage;
+});
+
+test("a meteor reaching the well center pays out and disappears", () => {
+  localStore();
+  const g = newGame();
+  g.start("classic");
+  g.meteors = [g.spawnMeteor(2, 0, 16, "normal", 130)];
+  g.gravity = { angle: 2, ring: 0, life: 5 };
+  g.spawnT = 999;
+  g.hitStop = 0;
+  const before = g.score;
+  g.update(0.016);
+  assert.equal(g.meteors.some(m => !m.flung && m.angle === 2), false);
+  assert.ok(g.score > before);
   delete global.localStorage;
 });
