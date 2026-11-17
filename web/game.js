@@ -284,6 +284,14 @@ function slingPreview(px, py, vx, vy, steps = 5, gap = 0.05) {
   return pts;
 }
 
+function flowTier(seconds) {
+  const s = Math.max(0, seconds || 0);
+  if (s >= 12) return { tier: 3, name: "ZENITH", mult: 1.15 };
+  if (s >= 8) return { tier: 2, name: "STREAM", mult: 1.10 };
+  if (s >= 4) return { tier: 1, name: "FLOW", mult: 1.05 };
+  return { tier: 0, name: "", mult: 1 };
+}
+
 function slingHintVisible(tutorialActive, slings, elapsed) {
   return !!tutorialActive && slings === 0 && elapsed > 6;
 }
@@ -1293,7 +1301,7 @@ class Game {
       bossesCleared: 0, boss: null, hitStop: 0, flash: 0, musicT: 0.7, musicBeat: 0, trailT: 0,
       shocks: [], shooting: [], shootingT: 2.5, shipTrail: [],
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
-      reverseGrace: 0, slings: 0, lastSlingT: -99, beatHit: -1,
+      reverseGrace: 0, slings: 0, lastSlingT: -99, beatHit: -1, flowT: 0, flowRing: -1,
       gravity: null, gravityT: 16, patternT: 9, patternWarn: null, modifier: null,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
       newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
@@ -2392,6 +2400,7 @@ class Game {
     if (onRing && this.invuln <= 0) {
       if (this.shield) {
         this.shield = false; this.invuln = 1.2; Sfx.play("shield"); Sfx.noise(160, 0.10, 700); vibrate(80);
+        this.flowT = 0; this.flowRing = -1;
         this.hitStop = 0.06; this.flash = Math.max(this.flash, 0.25);
         this.burst(px, py, ["#78c8ff"], 30, 280, .7);
       } else {
@@ -2524,7 +2533,9 @@ class Game {
     }
     this.invuln = Math.max(0, this.invuln - dt);
     this.reverseGrace = Math.max(0, this.reverseGrace - dt);
-    this.score += dt * 10 * this.level * this.scoreMul;
+    if (this.flowRing !== this.ring) { this.flowRing = this.ring; this.flowT = 0; }
+    else this.flowT += dt;
+    this.score += dt * 10 * this.level * this.scoreMul * flowTier(this.flowT).mult;
     this.comboT = Math.max(0, this.comboT - dt);
     this.magnetT = Math.max(0, this.magnetT - dt);
     this.slowT = Math.max(0, this.slowT - dt);
@@ -2696,6 +2707,7 @@ class Game {
         if (this.invuln > 0) { alive.push(m); continue; }
         if (this.shield) {
           this.shield = false; this.invuln = 1.2; Sfx.play("shield"); vibrate(60);
+          this.flowT = 0; this.flowRing = -1;
           this.hitStop = Math.max(this.hitStop, 0.06); this.flash = Math.max(this.flash, 0.2);
           if (m.kind === "volatile") this.explodeMeteor(m);
           this.burst(mx, my, ["#78c8ff"], 30, 280, .7); continue;
@@ -3372,6 +3384,8 @@ class Game {
     if (this.magnetT > 0) chips.push([`MAGNET ${this.magnetT.toFixed(1)}`, "#ff78dc"]);
     if (this.slowT > 0) chips.push([`WARP ${this.slowT.toFixed(1)}`, "#b48cff"]);
     if (this.runTime - this.lastSlingT < 2) chips.push([`SLING x${this.slings}`, "#a8ff8c"]);
+    const flow = flowTier(this.flowT);
+    if (flow.tier > 0) chips.push([flow.name, "#ffe678"]);
     chips.forEach(([s, col], i) => {
       const x = 24 + i * 150;
       panel(c, x, 122, 140, 24, "rgba(8,12,24,0.55)", "rgba(255,255,255,0.08)", 8);
@@ -4081,5 +4095,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, METEOR_GLYPHS, RUN_MODIFIERS, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, gravityStep, patternAngles, pickModifier, meteorGlyph, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
