@@ -278,6 +278,12 @@ function flingVelocity(px, py, tx, ty, angularVel) {
   return [(nx * 0.65 - ny * 0.55 * sign) * SLING_SPEED, (ny * 0.65 + nx * 0.55 * sign) * SLING_SPEED];
 }
 
+function slingPreview(px, py, vx, vy, steps = 5, gap = 0.05) {
+  const pts = [];
+  for (let i = 1; i <= steps; i++) pts.push([px + vx * gap * i, py + vy * gap * i]);
+  return pts;
+}
+
 function slingHintVisible(tutorialActive, slings, elapsed) {
   return !!tutorialActive && slings === 0 && elapsed > 6;
 }
@@ -3211,6 +3217,17 @@ class Game {
       const livery = this.skinLivery || SKIN_LIVERIES.scout;
       const facing = Math.sign(this.angularVel) || this.dir;
       const a = this.angle + facing * Math.PI / 2;
+      const aim = slingshotTarget(this.meteors, px, py);
+      if (aim) {
+        const tx = CX + Math.cos(aim.angle) * aim.r, ty = CY + Math.sin(aim.angle) * aim.r;
+        const [vx, vy] = flingVelocity(px, py, tx, ty, this.angularVel);
+        const pts = slingPreview(px, py, vx, vy);
+        c.save(); c.globalAlpha = 0.55; c.strokeStyle = "#a8ff8c"; c.lineWidth = 2;
+        if (c.setLineDash) c.setLineDash([7, 9]);
+        c.beginPath(); c.moveTo(px + ox, py + oy);
+        for (const [x, y] of pts) c.lineTo(x + ox, y + oy);
+        c.stroke(); c.restore();
+      }
       if (this.magnetT > 0) {
         for (const g of this.gems) {
           const gx = CX + Math.cos(g.angle) * RINGS[g.ring], gy = CY + Math.sin(g.angle) * RINGS[g.ring];
@@ -4064,5 +4081,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, METEOR_GLYPHS, RUN_MODIFIERS, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, patternAngles, pickModifier, meteorGlyph, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, gravityStep, patternAngles, pickModifier, meteorGlyph, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
