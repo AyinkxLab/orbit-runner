@@ -331,6 +331,8 @@ function weatherAt(seed, level) {
   return { id: "calm", name: "CALM", spawn: 0.85 };
 }
 
+function gemStreakBonus(streak) { return (streak || 0) >= 3 ? 1.5 : 1; }
+
 function flareWarningText(secondsRemaining, ringIndex) {
   const ring = RING_NAMES[ringIndex];
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
@@ -1321,6 +1323,7 @@ class Game {
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
       reverseGrace: 0, slings: 0, lastSlingT: -99, beatHit: -1, flowT: 0, flowRing: -1,
       gravity: null, gravityT: 16, patternT: 9, patternWarn: null, modifier: null, weather: null,
+      gemStreak: 0, gemStreakT: 0,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
       newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
@@ -2578,6 +2581,8 @@ class Game {
     this.comboT = Math.max(0, this.comboT - dt);
     this.magnetT = Math.max(0, this.magnetT - dt);
     this.slowT = Math.max(0, this.slowT - dt);
+    this.gemStreakT = Math.max(0, this.gemStreakT - dt);
+    if (this.gemStreakT <= 0) this.gemStreak = 0;
     this.updateTutorial();
 
     // Orbital mechanics: inner rings orbit faster (Kepler-ish), and turning
@@ -2790,10 +2795,14 @@ class Game {
       const gx = CX + Math.cos(g.angle) * RINGS[g.ring], gy = CY + Math.sin(g.angle) * RINGS[g.ring];
       const pickupR = 26 + this.magnetBonus + (this.magnetT > 0 ? 70 : 0);
       if (Math.hypot(gx - px, gy - py) < pickupR) {
-        const gain = this.crystalMul;
+        this.gemStreak = this.gemStreakT > 0 ? this.gemStreak + 1 : 1;
+        this.gemStreakT = 4;
+        const streakMul = gemStreakBonus(this.gemStreak);
+        const gain = Math.round(this.crystalMul * streakMul);
         this.crystals += gain; this.crystalGain += gain;
         this.save.lifetime += gain; this.gemsCollected++;
-        const pts = crystalPoints(this.combo, this.scoreMul, g.ring); this.score += pts;
+        const pts = Math.round(crystalPoints(this.combo, this.scoreMul, g.ring) * streakMul);
+        this.score += pts;
         this.float(gx, gy, `+${pts}`, "#78e6ff");
         this.bumpCombo();
         Sfx.play(this.combo >= 5 ? "gem3" : this.combo >= 3 ? "gem2" : "gem");
@@ -4135,5 +4144,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, METEOR_GLYPHS, RUN_MODIFIERS, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, dailyModifier, bossPhase, weatherAt, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, dailyModifier, bossPhase, weatherAt, gemStreakBonus, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
