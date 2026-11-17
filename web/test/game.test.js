@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, meteorGlyph, METEOR_TYPES, mulberry32, dailyModifier, bossPhase, weatherAt, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, meteorGlyph, METEOR_TYPES, mulberry32, dailyModifier, bossPhase, weatherAt, gemStreakBonus, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -1118,4 +1118,11 @@ test("weather is deterministic per seed and level and covers every state", () =>
   for (let level = 1; level <= 40; level++) ids.add(weatherAt(99, level).id);
   assert.deepEqual([...ids].sort(), ["calm", "clear", "debris"]);
   assert.ok(weatherAt(1, 1).spawn > 0);
+});
+
+test("gem streaks pay a bonus from the third crystal in a row", () => {
+  assert.equal(gemStreakBonus(0), 1);
+  assert.equal(gemStreakBonus(2), 1);
+  assert.equal(gemStreakBonus(3), 1.5);
+  assert.equal(gemStreakBonus(9), 1.5);
 });
