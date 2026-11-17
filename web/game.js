@@ -323,6 +323,14 @@ function bossPhase(remaining, cores, need) {
   return { enraged, spin: enraged ? 1.6 : 1, delay: enraged ? 0.7 : 1 };
 }
 
+function weatherAt(seed, level) {
+  const rng = mulberry32(((seed >>> 0) ^ ((level || 1) * 2654435761)) >>> 0);
+  const roll = rng();
+  if (roll < 0.45) return { id: "clear", name: "CLEAR", spawn: 1 };
+  if (roll < 0.75) return { id: "debris", name: "DEBRIS", spawn: 1.2 };
+  return { id: "calm", name: "CALM", spawn: 0.85 };
+}
+
 function flareWarningText(secondsRemaining, ringIndex) {
   const ring = RING_NAMES[ringIndex];
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
@@ -1312,7 +1320,7 @@ class Game {
       shocks: [], shooting: [], shootingT: 2.5, shipTrail: [],
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
       reverseGrace: 0, slings: 0, lastSlingT: -99, beatHit: -1, flowT: 0, flowRing: -1,
-      gravity: null, gravityT: 16, patternT: 9, patternWarn: null, modifier: null,
+      gravity: null, gravityT: 16, patternT: 9, patternWarn: null, modifier: null, weather: null,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
       newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
@@ -1370,6 +1378,7 @@ class Game {
     this.applyLoadout();
     if (mode === "classic" && this.save.tutorial.done) this.applyModifier(pickModifier(this.rng));
     if (mode === "daily") this.applyModifier(dailyModifier(this.dailyDate));
+    this.weather = weatherAt(this.seed, 1);
     this.runToken = null;
     this.tutorialActive = mode === "classic" && !this.save.tutorial.done;
     this.tutorialStep = this.save.tutorial.step || 0;
@@ -2558,6 +2567,7 @@ class Game {
     if (this.level > oldLevel) {
       this.float(CX, CY - 120, `LEVEL ${this.level} - ${this.levelName}`, "#ffd45a");
       Sfx.play("level"); Sfx.play("pad");
+      this.weather = weatherAt(this.seed, this.level);
       if (this.level % 5 === 0) this.startBoss();
     }
     this.invuln = Math.max(0, this.invuln - dt);
@@ -2670,7 +2680,7 @@ class Game {
         ));
       }
       const spawnFloor = Math.max(0.14, 0.24 - Math.max(0, lvl - 14) * 0.006);
-      this.spawnT = Math.max(spawnFloor, (1 - 0.07 * lvl) * bossMul * pacing.spawnIntervalMultiplier) * this.rnd(.7, 1.2);
+      this.spawnT = Math.max(spawnFloor, (1 - 0.07 * lvl) * bossMul * pacing.spawnIntervalMultiplier) * this.rnd(.7, 1.2) * (this.weather ? this.weather.spawn : 1);
     }
     // spawn crystals, favouring the risky outer ring
     if ((this.gemT -= dt) <= 0 && this.gems.length < 4) {
@@ -3415,6 +3425,7 @@ class Game {
     if (this.runTime - this.lastSlingT < 2) chips.push([`SLING x${this.slings}`, "#a8ff8c"]);
     const flow = flowTier(this.flowT);
     if (flow.tier > 0) chips.push([flow.name, "#ffe678"]);
+    if (this.weather && this.weather.id !== "clear") chips.push([this.weather.name, "#96c8ff"]);
     chips.forEach(([s, col], i) => {
       const x = 24 + i * 150;
       panel(c, x, 122, 140, 24, "rgba(8,12,24,0.55)", "rgba(255,255,255,0.08)", 8);
@@ -4124,5 +4135,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, METEOR_GLYPHS, RUN_MODIFIERS, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, dailyModifier, bossPhase, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, dailyModifier, bossPhase, weatherAt, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
