@@ -71,7 +71,14 @@ const METEOR_TYPES = [
   { id: "splitter", weight: 5, size: 1.10, speed: 0.90, near: 1, color: "#7a8a6a", shade: "#4a5a3a" },
 ];
 
-const RUN_MODIFIERS = [  { id: "rich", name: "RICH RINGS", desc: "2x crystals, faster rocks", crystal: 2, speed: 1.15, score: 1, flare: 1 },
+const METEOR_GLYPHS = {
+  normal: "circle", iron: "square", ice: "diamond",
+  gold: "star", volatile: "triangle", splitter: "cross",
+};
+function meteorGlyph(kind) { return METEOR_GLYPHS[kind] || "circle"; }
+
+const RUN_MODIFIERS = [
+  { id: "rich", name: "RICH RINGS", desc: "2x crystals, faster rocks", crystal: 2, speed: 1.15, score: 1, flare: 1 },
   { id: "thin", name: "THIN AIR", desc: "Slower rocks, 0.9x score", crystal: 1, speed: 0.85, score: 0.9, flare: 1 },
   { id: "storm", name: "STORM SEASON", desc: "Frequent flares, 1.15x score", crystal: 1, speed: 1, score: 1.15, flare: 0.7 },
   { id: "glass", name: "GLASS CANNON", desc: "1.25x score, faster rocks", crystal: 1, speed: 1.1, score: 1.25, flare: 1 },
@@ -3176,6 +3183,25 @@ class Game {
       circle(c, -m.size * 0.25, -m.size * 0.2, m.size * 0.22);
       circle(c, m.size * 0.3, m.size * 0.25, m.size * 0.15);
       c.restore();
+      if (this.save.settings.colorblind && !m.flung) {
+        const glyph = meteorGlyph(m.kind);
+        circle(c, mx, my, m.size * 0.6, "rgba(0,0,0,0.45)");
+        c.save(); c.translate(mx, my); c.strokeStyle = "#fff"; c.lineWidth = 2;
+        c.beginPath();
+        if (glyph === "square") c.rect(-5, -5, 10, 10);
+        else if (glyph === "diamond") { c.moveTo(0, -7); c.lineTo(6, 0); c.lineTo(0, 7); c.lineTo(-6, 0); c.closePath(); }
+        else if (glyph === "triangle") { c.moveTo(0, -7); c.lineTo(6, 5); c.lineTo(-6, 5); c.closePath(); }
+        else if (glyph === "star") {
+          for (let i = 0; i < 10; i++) {
+            const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? 3 : 7;
+            if (i === 0) c.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+            else c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+          }
+          c.closePath();
+        } else if (glyph === "cross") { c.moveTo(-6, 0); c.lineTo(6, 0); c.moveTo(0, -6); c.lineTo(0, 6); }
+        else c.arc(0, 0, 5, 0, TAU);
+        c.stroke(); c.restore();
+      }
       if (m.r > 380 && !m.flung) circle(c, CX + Math.cos(m.angle) * 370, CY + Math.sin(m.angle) * 370, 4, "#ff5050");
     }
 
@@ -4037,6 +4063,6 @@ function boot() {
 if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
-    SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, RUN_MODIFIERS, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, patternAngles, pickModifier, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, METEOR_GLYPHS, RUN_MODIFIERS, SHOP_ITEMS,
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, patternAngles, pickModifier, meteorGlyph, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);

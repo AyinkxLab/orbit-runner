@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, mulberry32, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, meteorGlyph, METEOR_TYPES, mulberry32, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -1051,4 +1051,15 @@ test("classic runs pick a modifier once the tutorial is over", () => {
   assert.ok(g.modifier);
   assert.ok(RUN_MODIFIERS.some(m => m.id === g.modifier.id));
   delete global.localStorage;
+});
+
+test("every meteor type has a distinct colorblind glyph", () => {
+  const seen = new Set();
+  for (const type of METEOR_TYPES) {
+    const glyph = meteorGlyph(type.id);
+    assert.ok(glyph);
+    assert.equal(seen.has(glyph), false);
+    seen.add(glyph);
+  }
+  assert.equal(meteorGlyph("unknown"), "circle");
 });
