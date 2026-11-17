@@ -28,6 +28,7 @@ const SLING_RADIUS = 95;
 const SLING_SPEED = 520;
 const SLING_LIFE = 1.2;
 const POWERUP_TIME = 10;
+const PULSE_RADIUS = 220;
 const TAU = Math.PI * 2;
 const LEVEL_NAMES = ["DUST", "EMBER", "FLARE", "CORONA", "NOVA", "PULSAR", "QUASAR", "VOID"];
 
@@ -1198,8 +1199,8 @@ function glowBlob(c, x, y, r, col) {
   circle(c, x, y, r, col);
 }
 
-const POWERUP_COLORS = { shield: "#78c8ff", magnet: "#ff78dc", slow: "#b48cff" };
-const POWERUP_LABELS = { shield: "S", magnet: "M", slow: "T" };
+const POWERUP_COLORS = { shield: "#78c8ff", magnet: "#ff78dc", slow: "#b48cff", pulse: "#ffb347" };
+const POWERUP_LABELS = { shield: "S", magnet: "M", slow: "T", pulse: "P" };
 const SHIP_LIVERIES = {
   scout: { hull: "#e8eef8", wing: "#9fb3cc", trim: "#78d8ff", accent: "#ff6a6a" },
   warden: { hull: "#dce8ff", wing: "#7fa8de", trim: "#5c9cff", accent: "#ffd45a" },
@@ -2376,14 +2377,31 @@ class Game {
     } else if (kind === "magnet") {
       this.magnetT = MAGNET_TIME;
       this.float(px, py - 40, "MAGNET", "#ff78dc");
+    } else if (kind === "pulse") {
+      this.firePulse();
     } else {
       this.slowT = SLOW_TIME;
       this.float(px, py - 40, "TIME WARP", "#b48cff");
     }
     Sfx.play("power"); vibrate(40);
   }
+  firePulse() {
+    const [px, py] = this.playerPos();
+    let killed = 0;
+    for (const m of this.meteors) {
+      if (m.dead || m.flung) continue;
+      const mx = CX + Math.cos(m.angle) * m.r, my = CY + Math.sin(m.angle) * m.r;
+      if (Math.hypot(mx - px, my - py) <= PULSE_RADIUS) { m.dead = true; killed++; }
+    }
+    const pts = killed * Math.round(30 * this.combo * this.scoreMul);
+    if (pts) this.score += pts;
+    this.addShock(px, py, "#ffb347", PULSE_RADIUS * 1.6, 0.5);
+    this.shake = Math.max(this.shake, 0.35);
+    this.float(px, py - 50, killed ? `PULSE x${killed} +${pts}` : "PULSE", "#ffb347");
+    return killed;
+  }
   spawnPowerup() {
-    const kind = seededPick(this.rng, ["shield", "magnet", "slow"]);
+    const kind = seededPick(this.rng, ["shield", "magnet", "slow", "pulse"]);
     this.powerup = { kind, ring: this.rndInt(3), angle: this.rnd(0, TAU), life: POWERUP_TIME };
     this.powerupT = this.rnd(16, 24);
   }
