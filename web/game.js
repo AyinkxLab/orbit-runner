@@ -270,6 +270,18 @@ function isOnBeat(musicT, interval, tolerance = 0.14) {
   return musicT <= tolerance || musicT >= interval - tolerance;
 }
 
+function gravityStep(x, y, wx, wy, dt, strength = 90) {
+  const dx = wx - x, dy = wy - y, d = Math.hypot(dx, dy);
+  if (!(d > 0) || !(dt > 0)) return [x, y];
+  return [x + dx / d * strength * dt, y + dy / d * strength * dt];
+}
+
+function patternAngles(base, count = 3, spread = 0.55) {
+  const out = [];
+  for (let i = 0; i < count; i++) out.push(base + (i - (count - 1) / 2) * spread);
+  return out;
+}
+
 function flareWarningText(secondsRemaining, ringIndex) {
   const ring = RING_NAMES[ringIndex];
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
@@ -1259,6 +1271,7 @@ class Game {
       shocks: [], shooting: [], shootingT: 2.5, shipTrail: [],
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
       reverseGrace: 0, slings: 0, lastSlingT: -99, beatHit: -1,
+      gravity: null, gravityT: 16, patternT: 9, patternWarn: null,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
       newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
@@ -2542,6 +2555,34 @@ class Game {
     }
     this.updateBoss(dt);
 
+    // gravity wells bend incoming rocks toward a single point
+    if (this.gravity) {
+      this.gravity.life -= dt;
+      if (this.gravity.life <= 0) { this.gravity = null; this.gravityT = this.rnd(14, 24); }
+    } else if (!this.boss && (this.gravityT -= dt) <= 0) {
+      this.gravity = { angle: this.rnd(0, TAU), ring: this.rndInt(3), life: 5 };
+      this.float(CX, CY - 240, "GRAVITY WELL", "#b48cff");
+      Sfx.play("warn");
+    }
+
+    // telegraphed fan patterns punish standing still without new art
+    if (this.patternWarn) {
+      this.patternWarn.t -= dt;
+      if (this.patternWarn.t <= 0) {
+        const warn = this.patternWarn;
+        this.patternWarn = null;
+        for (const a of patternAngles(warn.angle, 3, 0.55)) {
+          this.meteors.push(this.spawnMeteor(a, (120 + 12 * lvl) * this.meteorMul,
+            this.rnd(14, 22), this.pickMeteorType().id));
+        }
+        this.patternT = this.rnd(10, 16);
+        Sfx.play("warn");
+      }
+    } else if (!this.boss && lvl >= 3 && (this.patternT -= dt) <= 0) {
+      this.patternWarn = { angle: this.rnd(0, TAU), ring: this.rndInt(3), t: 1.2 };
+      this.float(CX, CY - 220, "PATTERN INCOMING", "#ff9a3c");
+    }
+
     // Spawn meteors. The first-run tutorial gets more breathing room;
     // ranked/daily and experienced runs keep the established difficulty curve.
     const pacing = difficultyProfile(lvl, { tutorial: this.tutorialActive, competitive: this.competitive });
@@ -2601,6 +2642,22 @@ class Game {
       m.angle += (m.spin + 26 / Math.max(80, m.r)) * dt;
       m.rot = (m.rot || 0) + (m.spin + 0.5) * dt;
       m.r -= m.speed * speedScale * entryMul * dt;
+      if (this.gravity) {
+        const wx = CX + Math.cos(this.gravity.angle) * RINGS[this.gravity.ring];
+        const wy = CY + Math.sin(this.gravity.angle) * RINGS[this.gravity.ring];
+        const bx = CX + Math.cos(m.angle) * m.r, by = CY + Math.sin(m.angle) * m.r;
+        const [nx, ny] = gravityStep(bx, by, wx, wy, dt);
+        m.r = Math.hypot(nx - CX, ny - CY);
+        m.angle = Math.atan2(ny - CY, nx - CX);
+        if (Math.hypot(nx - wx, ny - wy) < 18) {
+          const pts = Math.round(60 * this.combo * this.scoreMul);
+          this.score += pts; this.bumpCombo();
+          this.float(wx, wy, `GRAVITY +${pts}`, "#b48cff");
+          this.burst(wx, wy, ["#b48cff", "#78e6ff"], 18, 220, .6);
+          Sfx.play("power");
+          continue;
+        }
+      }
       const mx = CX + Math.cos(m.angle) * m.r, my = CY + Math.sin(m.angle) * m.r;
       const d = segDist(px, py, prevX, prevY, mx, my), hitR = m.size + 9;
       if (d < hitR) {
@@ -3043,6 +3100,27 @@ class Game {
       circle(c, gx, gy, 18, "#0c0a14");
       circle(c, gx, gy, 18, coreColor, 4);
       text(c, "C", gx, gy + 1, 20, "#ffd45a", true);
+    }
+
+    if (this.gravity) {
+      const gx = CX + Math.cos(this.gravity.angle) * RINGS[this.gravity.ring] + ox;
+      const gy = CY + Math.sin(this.gravity.angle) * RINGS[this.gravity.ring] + oy;
+      const pulse = 1 + 0.1 * Math.sin(this.time * 8);
+      c.globalAlpha = 0.16; circle(c, gx, gy, 44 * pulse, "#b48cff"); c.globalAlpha = 1;
+      circle(c, gx, gy, 26, "rgba(180,140,255,0.35)", 3);
+      circle(c, gx, gy, 13, "#0c0a14");
+      text(c, "G", gx, gy + 1, 16, "#d8c8ff", true);
+    }
+
+    if (this.patternWarn) {
+      const warn = this.patternWarn, rr = RINGS[warn.ring];
+      c.globalAlpha = 0.45 + 0.35 * Math.sin(this.time * 16);
+      c.strokeStyle = "#ff9a3c"; c.lineWidth = 5;
+      for (const a of patternAngles(warn.angle, 3, 0.55)) {
+        c.beginPath(); c.arc(CX + ox, CY + oy, rr, a - 0.14, a + 0.14); c.stroke();
+      }
+      c.globalAlpha = 1;
+      text(c, "INCOMING", CX + ox, CY + oy - rr - 16, 15, "#ff9a3c", true);
     }
 
     for (const m of this.meteors) {
@@ -3940,5 +4018,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, patternAngles, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
