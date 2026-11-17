@@ -71,6 +71,16 @@ const METEOR_TYPES = [
   { id: "splitter", weight: 5, size: 1.10, speed: 0.90, near: 1, color: "#7a8a6a", shade: "#4a5a3a" },
 ];
 
+const RUN_MODIFIERS = [  { id: "rich", name: "RICH RINGS", desc: "2x crystals, faster rocks", crystal: 2, speed: 1.15, score: 1, flare: 1 },
+  { id: "thin", name: "THIN AIR", desc: "Slower rocks, 0.9x score", crystal: 1, speed: 0.85, score: 0.9, flare: 1 },
+  { id: "storm", name: "STORM SEASON", desc: "Frequent flares, 1.15x score", crystal: 1, speed: 1, score: 1.15, flare: 0.7 },
+  { id: "glass", name: "GLASS CANNON", desc: "1.25x score, faster rocks", crystal: 1, speed: 1.1, score: 1.25, flare: 1 },
+];
+function pickModifier(rng) {
+  const roll = typeof rng === "function" ? rng() : Math.random();
+  return RUN_MODIFIERS[Math.floor(roll * RUN_MODIFIERS.length)] || RUN_MODIFIERS[0];
+}
+
 const GEM_PACKS = [
   { id: "pocket", name: "POCKET", gems: 80, price: "$0.99", productId: "orbit_gems_80" },
   { id: "pouch", name: "POUCH", gems: 240, price: "$2.99", productId: "orbit_gems_240" },
@@ -1271,7 +1281,7 @@ class Game {
       shocks: [], shooting: [], shootingT: 2.5, shipTrail: [],
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
       reverseGrace: 0, slings: 0, lastSlingT: -99, beatHit: -1,
-      gravity: null, gravityT: 16, patternT: 9, patternWarn: null,
+      gravity: null, gravityT: 16, patternT: 9, patternWarn: null, modifier: null,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
       newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
@@ -1327,6 +1337,7 @@ class Game {
     this.applyCosmetics();
     this.reset();
     this.applyLoadout();
+    if (mode === "classic" && this.save.tutorial.done) this.applyModifier(pickModifier(this.rng));
     this.runToken = null;
     this.tutorialActive = mode === "classic" && !this.save.tutorial.done;
     this.tutorialStep = this.save.tutorial.step || 0;
@@ -1353,6 +1364,14 @@ class Game {
     this.flareCD = (this.contract.flareRate || 12) * this.biome.flareRate;
     // orbital speed at the current radius, with inertia added in update()
     this.angularVel = this.dir * (1.6 + 0.08) * this.ship.ringSpeed;
+  }
+  applyModifier(mod) {
+    this.modifier = mod || null;
+    if (!mod) return;
+    this.crystalMul *= mod.crystal;
+    this.meteorMul *= mod.speed;
+    this.scoreMul *= mod.score;
+    this.flareCD *= mod.flare;
   }
   applyCosmetics() {
     const eq = this.save.cosmetics.equipped;
@@ -3279,10 +3298,11 @@ class Game {
   drawHud(c) {
     const mode = this.mode === "daily" ? "DAILY"
       : this.mode === "ranked" ? "RANKED" : this.contract.name;
+    const runLabel = this.modifier ? `${mode} · ${this.modifier.name}` : mode;
     panel(c, 16, 14, 280, 88, "rgba(7,11,22,0.78)", "rgba(120,200,255,0.18)");
     text(c, `SCORE`, 30, 38, 15, "#7f8ba3", true, "left");
     text(c, `${Math.floor(this.score)}`, 30, 64, 36, "#fff", true, "left");
-    text(c, `LV ${this.level} ${this.levelName} - ${mode} - ${this.biome.name}`, 30, 86, 13, "#9aa6c0", false, "left");
+    text(c, `LV ${this.level} ${this.levelName} - ${runLabel} - ${this.biome.name}`, 30, 86, 13, "#9aa6c0", false, "left");
     const levelPct = (this.elapsed % 15) / 15;
     c.fillStyle = "#1c2236"; c.fillRect(30, 96, 252, 4);
     c.fillStyle = "#78e6ff"; c.fillRect(30, 96, 252 * levelPct, 4);
@@ -4017,6 +4037,6 @@ function boot() {
 if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
-    SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, patternAngles, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, RUN_MODIFIERS, SHOP_ITEMS,
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, gravityStep, patternAngles, pickModifier, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
