@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, meteorGlyph, METEOR_TYPES, mulberry32, dailyModifier, bossPhase, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, meteorGlyph, METEOR_TYPES, mulberry32, dailyModifier, bossPhase, weatherAt, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -1110,4 +1110,12 @@ test("bosses enrage after half their cores or in the last five seconds", () => {
   const calm = bossPhase(12, 0, 4), hot = bossPhase(4, 0, 4);
   assert.ok(hot.spin > calm.spin);
   assert.ok(hot.delay < calm.delay);
+});
+
+test("weather is deterministic per seed and level and covers every state", () => {
+  assert.deepEqual(weatherAt(1234, 5), weatherAt(1234, 5));
+  const ids = new Set();
+  for (let level = 1; level <= 40; level++) ids.add(weatherAt(99, level).id);
+  assert.deepEqual([...ids].sort(), ["calm", "clear", "debris"]);
+  assert.ok(weatherAt(1, 1).spawn > 0);
 });
