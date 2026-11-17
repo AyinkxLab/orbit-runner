@@ -265,6 +265,11 @@ function slingHintVisible(tutorialActive, slings, elapsed) {
   return !!tutorialActive && slings === 0 && elapsed > 6;
 }
 
+function isOnBeat(musicT, interval, tolerance = 0.14) {
+  if (!(interval > 0)) return false;
+  return musicT <= tolerance || musicT >= interval - tolerance;
+}
+
 function flareWarningText(secondsRemaining, ringIndex) {
   const ring = RING_NAMES[ringIndex];
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
@@ -1253,7 +1258,7 @@ class Game {
       bossesCleared: 0, boss: null, hitStop: 0, flash: 0, musicT: 0.7, musicBeat: 0, trailT: 0,
       shocks: [], shooting: [], shootingT: 2.5, shipTrail: [],
       ghostSamples: [], lastGhostSample: -1, runCounted: false, runToken: null,
-      reverseGrace: 0, slings: 0, lastSlingT: -99,
+      reverseGrace: 0, slings: 0, lastSlingT: -99, beatHit: -1,
       missionReward: 0, scoreMul: 1, crystalMul: 1, meteorMul: 1, gemRate: 1, magnetBonus: 0,
       newBest: false, newDailyBest: false, submission: null, shareMessage: "", message: "", lastCampaignDiscovery: "",
     });
@@ -2161,6 +2166,17 @@ class Game {
     return true;
   }
 
+  tryBeatBonus() {
+    const interval = Math.max(0.32, 0.7 - 0.03 * this.level);
+    if (!isOnBeat(this.musicT, interval) || this.beatHit === this.musicBeat) return false;
+    this.beatHit = this.musicBeat;
+    const pts = Math.round(20 * this.combo * this.scoreMul);
+    this.score += pts; this.bumpCombo();
+    this.float(CX, CY - 70, `ON BEAT +${pts}`, "#78e6ff");
+    Sfx.play("near");
+    return true;
+  }
+
   // ---- input ------------------------------------------------------------
   action(a) {
     if (this.paused) return;
@@ -2168,7 +2184,11 @@ class Game {
     if (this.state !== "play") return;
     if (a === "up" && this.ring < 2) this.ring++;
     else if (a === "down" && this.ring > 0) this.ring--;
-    else if (a === "reverse" || a === "tap") { this.dir *= -1; this.reverseGrace = 0.5; if (a === "tap") this.trySlingshot(); }
+    else if (a === "reverse" || a === "tap") {
+      this.dir *= -1; this.reverseGrace = 0.5;
+      if (a === "tap") this.trySlingshot();
+      this.tryBeatBonus();
+    }
     else return;
     Sfx.play("jump");
   }
@@ -3220,6 +3240,8 @@ class Game {
       text(c, `GHOST ${this.ghost.score}`, 30, 196, 14, "#5c6f8a", false, "left");
     if (slingHintVisible(this.tutorialActive, this.slings, this.elapsed))
       text(c, "TAP TO WHIP", W / 2, H - 210, 18, "#a8ff8c", true);
+    if (isOnBeat(this.musicT, Math.max(0.32, 0.7 - 0.03 * this.level)))
+      text(c, "BEAT", 30, 214, 13, "#78e6ff", true, "left");
 
     if (this.boss) {
       const surgeRemaining = Math.max(0, this.boss.timer);
@@ -3918,5 +3940,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
