@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -923,6 +923,13 @@ test("a flung rock leaves the player and curves with the orbit", () => {
   const [vx, vy] = flingVelocity(0, 0, 100, 0, 1);
   assert.ok(Math.abs(vx - 338) < 0.01);
   assert.ok(Math.abs(vy - 286) < 0.01);
+});
+
+test("the sling hint only shows during the first tutorial run", () => {
+  assert.equal(slingHintVisible(true, 0, 7), true);
+  assert.equal(slingHintVisible(true, 0, 5), false);
+  assert.equal(slingHintVisible(true, 1, 20), false);
+  assert.equal(slingHintVisible(false, 0, 20), false);
 });
 
 test("a tap whips a nearby meteor into a friendly projectile", () => {

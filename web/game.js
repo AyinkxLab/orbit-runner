@@ -261,6 +261,10 @@ function flingVelocity(px, py, tx, ty, angularVel) {
   return [(nx * 0.65 - ny * 0.55 * sign) * SLING_SPEED, (ny * 0.65 + nx * 0.55 * sign) * SLING_SPEED];
 }
 
+function slingHintVisible(tutorialActive, slings, elapsed) {
+  return !!tutorialActive && slings === 0 && elapsed > 6;
+}
+
 function flareWarningText(secondsRemaining, ringIndex) {
   const ring = RING_NAMES[ringIndex];
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
@@ -3206,6 +3210,7 @@ class Game {
     if (this.shield) chips.push(["SHIELD", "#78c8ff"]);
     if (this.magnetT > 0) chips.push([`MAGNET ${this.magnetT.toFixed(1)}`, "#ff78dc"]);
     if (this.slowT > 0) chips.push([`WARP ${this.slowT.toFixed(1)}`, "#b48cff"]);
+    if (this.runTime - this.lastSlingT < 2) chips.push([`SLING x${this.slings}`, "#a8ff8c"]);
     chips.forEach(([s, col], i) => {
       const x = 24 + i * 150;
       panel(c, x, 122, 140, 24, "rgba(8,12,24,0.55)", "rgba(255,255,255,0.08)", 8);
@@ -3213,6 +3218,8 @@ class Game {
     });
     if (this.ghost && this.mode === "classic")
       text(c, `GHOST ${this.ghost.score}`, 30, 196, 14, "#5c6f8a", false, "left");
+    if (slingHintVisible(this.tutorialActive, this.slings, this.elapsed))
+      text(c, "TAP TO WHIP", W / 2, H - 210, 18, "#a8ff8c", true);
 
     if (this.boss) {
       const surgeRemaining = Math.max(0, this.boss.timer);
@@ -3911,5 +3918,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
