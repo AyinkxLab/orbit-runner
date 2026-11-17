@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingHintVisible, isOnBeat, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -923,6 +923,24 @@ test("a flung rock leaves the player and curves with the orbit", () => {
   const [vx, vy] = flingVelocity(0, 0, 100, 0, 1);
   assert.ok(Math.abs(vx - 338) < 0.01);
   assert.ok(Math.abs(vy - 286) < 0.01);
+});
+
+test("beat windows reward one reversal per musical pulse", () => {
+  assert.equal(isOnBeat(0.05, 0.7), true);
+  assert.equal(isOnBeat(0.7, 0.7), true);
+  assert.equal(isOnBeat(0.35, 0.7), false);
+  assert.equal(isOnBeat(0.6, 0.7, 0.05), false);
+  const g = newGame();
+  g.start();
+  g.meteors = [];
+  g.musicT = 0.02; g.musicBeat = 7;
+  const before = g.score;
+  g.action("reverse");
+  assert.ok(g.score > before);
+  assert.equal(g.beatHit, 7);
+  const after = g.score;
+  g.action("reverse");
+  assert.equal(g.score, after);
 });
 
 test("the sling hint only shows during the first tutorial run", () => {
