@@ -850,6 +850,34 @@ test("reverse orbit earns a close-pass bonus once", () => {
   assert.equal(g.meteors[0].near, true);
 });
 
+test("a slung rock chains into nearby meteors and can break a boss core", () => {
+  const g = newGame();
+  g.start();
+  g.angle = 0; g.ringVis = 130;
+  const [px, py] = g.playerPos();
+  const flung = { angle: 0, r: 130, speed: 0, size: 12, kind: "normal", spin: 0,
+    dead: false, flung: true, fx: px, fy: py, vx: 300, vy: 0, flungT: 1, chain: 0 };
+  const other = { angle: 0, r: 150, speed: 0, size: 12, kind: "normal", spin: 0, dead: false };
+  g.meteors = [flung, other];
+  const spawned = [];
+  const before = g.score;
+  g.updateFlung(flung, 0.01, spawned);
+  assert.equal(other.dead, true);
+  assert.equal(spawned.length, 1);
+  assert.equal(spawned[0].chain, 1);
+  assert.equal(spawned[0].flung, true);
+  assert.ok(g.score > before);
+
+  g.boss = { core: { angle: 0, ring: 1 }, cores: 0, need: 3, coreDelay: 10, coreLife: 5 };
+  const coreRock = { ...flung, dead: false, fx: 360 + 215, fy: 680, vx: 0, vy: 0, flungT: 1, chain: 0 };
+  g.meteors = [coreRock];
+  const coreScore = g.score;
+  g.updateFlung(coreRock, 0.01, []);
+  assert.equal(g.boss.cores, 1);
+  assert.equal(g.boss.core, null);
+  assert.ok(g.score > coreScore);
+});
+
 test("daily new best is measured against the daily score, not the all-time best", () => {
   const g = newGame();
   g.start("daily");
