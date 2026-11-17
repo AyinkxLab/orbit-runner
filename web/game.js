@@ -2758,8 +2758,13 @@ class Game {
           this.shield = false; this.invuln = 1.2; Sfx.play("shield"); vibrate(60);
           this.flowT = 0; this.flowRing = -1; this.levelHit = true;
           this.hitStop = Math.max(this.hitStop, 0.06); this.flash = Math.max(this.flash, 0.2);
-          if (m.kind === "volatile") this.explodeMeteor(m);
-          this.burst(mx, my, ["#78c8ff"], 30, 280, .7); continue;
+          if (m.kind === "volatile") { this.explodeMeteor(m); continue; }
+          const dx = mx - px, dy = my - py, len = Math.hypot(dx, dy) || 1;
+          m.flung = true; m.fx = mx; m.fy = my;
+          m.vx = dx / len * SLING_SPEED; m.vy = dy / len * SLING_SPEED;
+          m.flungT = SLING_LIFE; m.chain = 0; m.near = false;
+          this.burst(mx, my, ["#78c8ff", "#a8ff8c"], 30, 280, .7);
+          alive.push(m); continue;
         }
         this.die("meteor"); return;
       }

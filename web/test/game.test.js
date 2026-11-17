@@ -1137,3 +1137,16 @@ test("a level cleared without damage pays two crystals", () => {
   assert.equal(g.crystals, before + 2);
   delete global.localStorage;
 });
+
+test("a shield parries the meteor that hits it", () => {
+  localStore();
+  const g = newGame();
+  g.start("classic");
+  g.shield = true; g.invuln = 0;
+  const m = g.spawnMeteor(g.angle, 100, 20, "normal", g.ringVis);
+  g.meteors = [m];
+  g.update(0.016);
+  assert.equal(g.shield, false);
+  assert.equal(m.flung, true);
+  delete global.localStorage;
+});
