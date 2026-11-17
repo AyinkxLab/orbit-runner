@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { Game, MockAdProvider, AdMobProvider, Save, Social, Leaderboard, MISSION_POOL, CONTRACTS,
   BIOMES, SHOP_ITEMS, GEM_PACKS, DemoIapProvider, dateKey, weekKey, CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign,
-  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, meteorGlyph, METEOR_TYPES, mulberry32, dailyModifier, bossPhase, weatherAt, gemStreakBonus, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
+  sanitizeCampaign, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, RUN_MODIFIERS, pickModifier, meteorGlyph, METEOR_TYPES, mulberry32, dailyModifier, bossPhase, weatherAt, gemStreakBonus, isPrismatic, flareWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress } = require("../game.js");
 
 function localStore() {
   const store = {};
@@ -1148,5 +1148,29 @@ test("a shield parries the meteor that hits it", () => {
   g.update(0.016);
   assert.equal(g.shield, false);
   assert.equal(m.flung, true);
+  delete global.localStorage;
+});
+
+test("prismatic crystals use a ten percent roll", () => {
+  assert.equal(isPrismatic(0), true);
+  assert.equal(isPrismatic(0.099), true);
+  assert.equal(isPrismatic(0.1), false);
+});
+
+test("prismatic crystals are worth three times a normal pickup", () => {
+  localStore();
+  const plain = newGame();
+  plain.start("classic");
+  plain.gems = [{ ring: 1, angle: plain.angle, life: 6, prismatic: false }];
+  const before = plain.crystals;
+  plain.update(0.016);
+  assert.equal(plain.crystals - before, 1);
+
+  const prism = newGame();
+  prism.start("classic");
+  prism.gems = [{ ring: 1, angle: prism.angle, life: 6, prismatic: true }];
+  const start = prism.crystals;
+  prism.update(0.016);
+  assert.equal(prism.crystals - start, 3);
   delete global.localStorage;
 });

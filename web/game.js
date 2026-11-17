@@ -333,6 +333,8 @@ function weatherAt(seed, level) {
 
 function gemStreakBonus(streak) { return (streak || 0) >= 3 ? 1.5 : 1; }
 
+function isPrismatic(roll) { return roll < 0.1; }
+
 function flareWarningText(secondsRemaining, ringIndex) {
   const ring = RING_NAMES[ringIndex];
   if (!ring || !Number.isFinite(secondsRemaining) || secondsRemaining <= 0) return "";
@@ -2695,7 +2697,7 @@ class Game {
     // spawn crystals, favouring the risky outer ring
     if ((this.gemT -= dt) <= 0 && this.gems.length < 4) {
       const ring = this.chance(0.5) ? 2 : this.rndInt(3);
-      this.gems.push({ ring, angle: this.rnd(0, TAU), life: 6 });
+      this.gems.push({ ring, angle: this.rnd(0, TAU), life: 6, prismatic: isPrismatic(this.rng()) });
       this.gemT = this.rnd(1.1, 2.1) / (this.gemRate || 1);
     }
     // power-ups
@@ -2808,16 +2810,17 @@ class Game {
         this.gemStreak = this.gemStreakT > 0 ? this.gemStreak + 1 : 1;
         this.gemStreakT = 4;
         const streakMul = gemStreakBonus(this.gemStreak);
-        const gain = Math.round(this.crystalMul * streakMul);
+        const gemMul = g.prismatic ? 3 : 1;
+        const gain = Math.round(this.crystalMul * streakMul) * gemMul;
         this.crystals += gain; this.crystalGain += gain;
         this.save.lifetime += gain; this.gemsCollected++;
-        const pts = Math.round(crystalPoints(this.combo, this.scoreMul, g.ring) * streakMul);
+        const pts = Math.round(crystalPoints(this.combo, this.scoreMul, g.ring) * streakMul) * gemMul;
         this.score += pts;
-        this.float(gx, gy, `+${pts}`, "#78e6ff");
+        this.float(gx, gy, g.prismatic ? `PRISM x${gemMul} +${pts}` : `+${pts}`, g.prismatic ? "#ffd45a" : "#78e6ff");
         this.bumpCombo();
         Sfx.play(this.combo >= 5 ? "gem3" : this.combo >= 3 ? "gem2" : "gem");
-        this.addShock(gx, gy, "#78e6ff", 55, 0.3);
-        vibrate(15); this.burst(gx, gy, ["#78e6ff"], 16, 200, .5); return false;
+        this.addShock(gx, gy, g.prismatic ? "#ffd45a" : "#78e6ff", 55, 0.3);
+        vibrate(15); this.burst(gx, gy, [g.prismatic ? "#ffd45a" : "#78e6ff"], 16, 200, .5); return false;
       }
       return g.life > 0;
     });
@@ -3176,9 +3179,14 @@ class Game {
     for (const g of this.gems) {
       if (g.life < 1.5 && Math.floor(this.time * 10) % 2) continue;
       const gx = CX + Math.cos(g.angle) * RINGS[g.ring] + ox, gy = CY + Math.sin(g.angle) * RINGS[g.ring] + oy;
-      const rr = 11 + 3 * Math.sin(this.time * 6);
-      c.fillStyle = "#78e6ff"; c.beginPath();
+      const rr = (g.prismatic ? 14 : 11) + 3 * Math.sin(this.time * 6);
+      const col = g.prismatic ? "#ffd45a" : "#78e6ff";
+      c.fillStyle = col; c.beginPath();
       c.moveTo(gx, gy - rr); c.lineTo(gx + rr * .7, gy); c.lineTo(gx, gy + rr); c.lineTo(gx - rr * .7, gy); c.fill();
+      if (g.prismatic) {
+        c.strokeStyle = "#fff0a8"; c.lineWidth = 2;
+        c.beginPath(); c.moveTo(gx - rr, gy); c.lineTo(gx + rr, gy); c.moveTo(gx, gy - rr); c.lineTo(gx, gy + rr); c.stroke();
+      }
     }
 
     if (this.powerup) {
@@ -4154,5 +4162,5 @@ if (typeof module !== "undefined" && module.exports)
   module.exports = { Game, MockAdProvider, AdMobProvider, createAdProvider, Save, Sfx, Social, Leaderboard,
     CAMPAIGN_SECTORS, STORY_ENTRIES, EXPLORATION_OBJECTIVES, freshCampaign, sanitizeCampaign, DemoIapProvider, DisabledIapProvider, CdvIapProvider, createIapProvider, GEM_PACKS, CONTINUE_BASE_COST,
     SHIPS, CONTRACTS, MISSION_POOL, BIOMES, METEOR_TYPES, METEOR_GLYPHS, RUN_MODIFIERS, SHOP_ITEMS,
-    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, dailyModifier, bossPhase, weatherAt, gemStreakBonus, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
+    dateKey, weekKey, mulberry32, difficultyProfile, ghostSampleAt, swipeDir, crystalPoints, missionTarget, slingshotTarget, flingVelocity, slingPreview, slingHintVisible, isOnBeat, flowTier, gravityStep, patternAngles, pickModifier, meteorGlyph, dailyModifier, bossPhase, weatherAt, gemStreakBonus, isPrismatic, flareWarningText, bossWarningText, comboMilestoneText, shouldRenderScreenFlash, shouldApplyHitStop, campaignPauseHint, campaignMapPoint, storySignalState, planetSurveyProfile, campaignBossProfile, cosmeticPreviewItem, achievementProgress, W, H };
 else window.addEventListener("load", boot);
